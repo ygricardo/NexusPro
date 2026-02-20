@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-midnight text-white antialiased selection:bg-primary/30 selection:text-white overflow-x-hidden;
+    background-image: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 100% 0%, rgba(234, 179, 8, 0.1) 0%, transparent 40%);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer components {
+
+  /* Glassmorphism */
+  .glass {
+    @apply bg-midnight/40 backdrop-blur-md border border-white/10;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+  }
+
+  .glass-card {
+    @apply relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-3xl border border-white/10 shadow-lg transition-all duration-300;
+  }
+
+  .glass-card:hover {
+    @apply border-white/20;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+  }
+
+  .glass-header {
+    @apply bg-midnight/80 backdrop-blur-xl border-b border-white/5 sticky top-0 z-50 shadow-lg shadow-black/20;
+  }
+
+  /* Neon Text Utilities */
+  .text-glow {
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.3);
+  }
+
+  .text-glow-yellow {
+    text-shadow: 0 0 10px rgba(234, 179, 8, 0.5), 0 0 20px rgba(234, 179, 8, 0.3);
+  }
+
+  .text-glow-red {
+    text-shadow: 0 0 10px rgba(239, 68, 68, 0.5), 0 0 20px rgba(239, 68, 68, 0.3);
+  }
+
+  /* Futuristic Buttons */
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-700 text-white font-bold rounded-2xl shadow-lg shadow-primary/30 transition-all hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .btn-accent {
+    @apply bg-secondary hover:bg-yellow-500 text-white font-bold rounded-2xl shadow-lg shadow-secondary/30 transition-all hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply text-neutral-500 hover:text-primary hover:bg-primary/10 font-medium rounded-xl transition-all;
+  }
+
+  /* Inputs */
+  .input-clean {
+    @apply bg-neutral-50 border-neutral-100 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-2xl transition-all duration-300 outline-none;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

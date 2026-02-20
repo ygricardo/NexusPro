@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>RBT Master Data Tool V26 - Specific Pre-Mastery Drop</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #0f172a;
+            --blue: #2563eb;
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --mastery: #fef08a;
+            --danger: #ef4444;
+            --success: #059669;
+            --replacement: #818cf8;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            margin: 0;
+            padding: 20px;
+            color: var(--text);
+        }
+
+        .container {
+            max-width: 98%;
+            margin: auto;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: -1px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .tab {
+            padding: 12px 25px;
+            cursor: pointer;
+            background: #e2e8f0;
+            border-radius: 10px 10px 0 0;
+            font-weight: bold;
+            border: 1px solid #cbd5e1;
+            border-bottom: none;
+            color: #64748b;
+            transition: 0.2s;
+        }
+
+        .tab.active {
+            background: white;
+            color: var(--primary);
+            border-top: 4px solid var(--blue);
+            padding-bottom: 13px;
+        }
+
+        .tab-replacement.active {
+            border-top-color: var(--replacement);
+        }
+
+        .config-section {
+            background: white;
+            padding: 25px;
+            border-radius: 0 12px 12px 12px;
+            border: 1px solid #cbd5e1;
+            margin-bottom: 30px;
+        }
+
+        .behavior-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1.5fr auto auto;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .behavior-row input {
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .label-style {
+            font-size: 0.7rem;
+            font-weight: bold;
+            color: #64748b;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            transition: 0.2s;
+        }
+
+        .btn-refresh-row {
+            background: var(--success);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            border: none;
+        }
+
+        .btn-refresh-row:hover {
+            opacity: 0.8;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            margin-top: 20px;
+            background: white;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th {
+            background: var(--primary);
+            color: white;
+            padding: 12px 6px;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+        }
+
+        td {
+            border-bottom: 1px solid #f1f5f9;
+            border-right: 1px solid #f1f5f9;
+            padding: 10px 4px;
+            text-align: center;
+        }
+
+        .mastery-zone {
+            background-color: var(--mastery) !important;
+            color: #854d0e;
+            font-weight: bold;
+            position: relative;
+        }
+
+        .mastery-zone::after {
+            content: 'M';
+            position: absolute;
+            top: 1px;
+            right: 2px;
+            font-size: 0.55rem;
+            opacity: 0.7;
+        }
+
+        .row-name {
+            text-align: left;
+            padding-left: 15px;
+            font-weight: bold;
+            background: #fcfcfc;
+            min-width: 180px;
+            color: var(--primary);
+            border-right: 2px solid #e2e8f0;
+        }
+
+        @media print {
+
+            .no-print,
+            .tabs,
+            .config-section {
+                display: none !important;
+            }
+
+            .container {
+                box-shadow: none;
+                border: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="header"
+            style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <div>
+                <h2 style="margin:0; color: var(--primary);">RBT Master Data Tool V26</h2>
+                <p style="margin:5px 0 0; color: #64748b; font-size: 0.85rem;">Replacement: Semana PREVIA estricta (<
+                        Target) | Salto ≤ 4.</p>
+            </div>
+            <div class="no-print">
+                <button class="btn" style="background:var(--success); color:white" onclick="exportExcel()">Exportar
+                    Excel</button>
+            </div>
+        </div>
+
+        <div class="tabs no-print">
+            <div id="tab-reduction" class="tab active" onclick="switchTab('reduction')">Reduction Behaviors</div>
+            <div id="tab-replacement" class="tab tab-replacement" onclick="switchTab('replacement')">Replacement Skills
+            </div>
+        </div>
+
+        <div class="config-section no-print">
+            <div
+                style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr auto auto; gap: 10px; margin-bottom: 10px;">
+                <div class="label-style">Nombre de Conducta</div>
+                <div class="label-style">Baseline</div>
+                <div class="label-style">Semanas</div>
+                <div class="label-style">Fines de Maestría</div>
+                <div class="label-style">Act.</div>
+                <div></div>
+            </div>
+            <div id="behaviorInputs"></div>
+
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button class="btn" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;"
+                    onclick="addBehaviorInput()">+ Añadir Fila</button>
+                <button class="btn" id="mainGenBtn" style="background:var(--blue); color:white; flex-grow: 1;"
+                    onclick="generateAll()">GENERAR TODO</button>
+                <button class="btn" style="background:var(--danger); color:white" onclick="clearCurrentTab()">Limpiar
+                    Pestaña</button>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table id="mainTable">
+                <thead id="thead"></thead>
+                <tbody id="tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'reduction';
+        let dataStore = { reduction: [], replacement: [] };
+
+        window.onload = () => { addBehaviorInput(); };
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            document.getElementById('mainGenBtn').style.background = tab === 'replacement' ? 'var(--replacement)' : 'var(--blue)';
+            renderUIInputs();
+            renderTable();
+        }
+
+        function addBehaviorInput() {
+            const id = "id_" + Date.now() + Math.random().toString(36).substr(2, 5);
+            const defaultBL = currentTab === 'reduction' ? 85 : 0;
+            dataStore[currentTab].push({
+                id: id,
+                name: `Conducta ${dataStore[currentTab].length + 1}`,
+                bl: defaultBL,
+                weeks: 40,
+                mastery: "12, 26",
+                generatedData: []
+            });
+            renderUIInputs();
+        }
+
+        function removeRow(id) {
+            dataStore[currentTab] = dataStore[currentTab].filter(row => row.id !== id);
+            renderUIInputs();
+            renderTable();
+        }
+
+        function clearCurrentTab() {
+            if (confirm("¿Estás seguro de que quieres borrar todas las filas de esta pestaña?")) {
+                dataStore[currentTab] = [];
+                renderUIInputs();
+                renderTable();
+            }
+        }
+
+        function renderUIInputs() {
+            const container = document.getElementById('behaviorInputs');
+            container.innerHTML = '';
+            dataStore[currentTab].forEach(row => {
+                const div = document.createElement('div');
+                div.className = 'behavior-row';
+                div.innerHTML = `
+                <input type="text" oninput="updateRow('${row.id}', 'name', this.value)" value="${row.name}">
+                <input type="number" oninput="updateRow('${row.id}', 'bl', this.value)" value="${row.bl}">
+                <input type="number" oninput="updateRow('${row.id}', 'weeks', this.value)" value="${row.weeks}">
+                <input type="text" oninput="updateRow('${row.id}', 'mastery', this.value)" value="${row.mastery}">
+                <button class="btn-refresh-row" onclick="generateSingle('${row.id}')">↻</button>
+                <button style="color:var(--danger); background:none; border:none; cursor:pointer; font-weight:bold; font-size:1.2rem;" onclick="removeRow('${row.id}')">×</button>
+            `;
+                container.appendChild(div);
+            });
+        }
+
+        function updateRow(id, field, value) {
+            const row = dataStore[currentTab].find(r => r.id === id);
+            if (row) {
+                if (field === 'name' || field === 'mastery') row[field] = value;
+                else row[field] = parseInt(value) || 0;
+            }
+        }
+
+        function generateSingle(id) {
+            const row = dataStore[currentTab].find(r => r.id === id);
+            if (!row) return;
+            const mEnds = row.mastery.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n)).sort((a, b) => a - b);
+            row.generatedData = generatePath(row.bl, row.weeks, mEnds, currentTab);
+            renderTable();
+        }
+
+        function generateAll() {
+            dataStore[currentTab].forEach(row => generateSingle(row.id));
+        }
+
+        function generatePath(initialBL, totalWeeks, masteryEnds, type) {
+            let fullPath = [];
+            let currentVal = initialBL;
+            let startWeek = 1;
+
+            let milestones = [...masteryEnds];
+            if (milestones.length === 0 || milestones[milestones.length - 1] < totalWeeks) milestones.push(totalWeeks);
+
+            let masteryCounter = 0;
+
+            milestones.forEach((milestone, index) => {
+                const steps = milestone - startWeek + 1;
+                if (steps <= 0) return;
+
+                const isMastery = masteryEnds.includes(milestone);
+                let target;
+
+                if (type === 'reduction') {
+                    target = isMastery ? Math.max(1, currentVal - 10) : initialBL + (Math.random() > 0.5 ? 1 : -1);
+                    const segment = solveBacktrackingOriginal(currentVal, target, steps);
+                    segment.forEach((val, i) => {
+                        const absW = startWeek + i;
+                        const inM = masteryEnds.some(e => absW <= e && absW > (e - 4));
+                        fullPath.push({ weekNum: absW, value: val, isMastery: inM });
+                    });
+                    currentVal = segment[segment.length - 1];
+                } else {
+                    // Lógica de Replacement (10 en 10)
+                    if (isMastery) {
+                        masteryCounter++;
+                        target = masteryCounter * 10;
+                    } else {
+                        target = currentVal;
+                    }
+
+                    const ceiling = isMastery ? target + 4 : target + 8;
+
+                    let segment;
+                    if (isMastery && steps >= 4) {
+                        const ascentSteps = steps - 4;
+                        // FASE 1: ASCENSO (Antes de la maestría)
+                        if (ascentSteps > 0) {
+                            // Pasamos 'forceLastBelow = true' para que la ULTIMA semana sea < target
+                            const ascent = solveRecursiveReplacement(currentVal, target, ascentSteps, false, ceiling, fullPath.map(p => p.value), true);
+                            fullPath = fullPath.concat(ascent.map((v, i) => ({ weekNum: startWeek + i, value: v, isMastery: false })));
+                            currentVal = ascent[ascent.length - 1];
+                        }
+                        // FASE 2: PLATEAU (Maestría)
+                        const plateau = solveRecursiveReplacement(currentVal, target, 4, true, target + 4, fullPath.map(p => p.value), false);
+                        fullPath = fullPath.concat(plateau.map((v, i) => ({ weekNum: startWeek + (ascentSteps > 0 ? ascentSteps : 0) + i, value: v, isMastery: true })));
+                        currentVal = plateau[plateau.length - 1];
+                    } else {
+                        // No es hito de maestría (No forzamos la bajada final)
+                        segment = solveRecursiveReplacement(currentVal, target, steps, false, ceiling, fullPath.map(p => p.value), false);
+                        fullPath = fullPath.concat(segment.map((v, i) => ({ weekNum: startWeek + i, value: v, isMastery: false })));
+                        currentVal = segment[segment.length - 1];
+                    }
+                }
+                startWeek = milestone + 1;
+            });
+            return fullPath;
+        }
+
+        // --- REDUCTION BEHAVIOR (ORIGINAL - NO TOCAR) ---
+        function solveBacktrackingOriginal(startVal, targetVal, steps) {
+            let result = null;
+            function backtrack(path, current) {
+                if (result) return;
+                if (path.length === steps) {
+                    if (current === targetVal) result = [...path];
+                    return;
+                }
+                const remaining = steps - path.length - 1;
+                let jumps = [1, 2, 3];
+                jumps.sort(() => Math.random() - 0.5);
+                for (let jump of jumps) {
+                    for (let dir of [-1, 1]) {
+                        let next = current + (jump * dir);
+                        if (next < 1 || next > 100 || next === current) continue;
+                        if (path.length >= 2) {
+                            const prev = current;
+                            const anteprev = path[path.length - 2];
+                            if (next > prev && prev > anteprev) continue;
+                            if (next < prev && prev < anteprev) continue;
+                        }
+                        if (Math.abs(next - targetVal) > (remaining * 3)) continue;
+                        path.push(next);
+                        backtrack(path, next);
+                        path.pop();
+                    }
+                }
+            }
+            backtrack([], startVal);
+            if (!result) {
+                result = [];
+                let temp = startVal;
+                for (let i = 1; i <= steps; i++) {
+                    let ideal = startVal + (targetVal - startVal) * (i / steps);
+                    temp = Math.max(1, Math.round(ideal + (Math.random() * 2 - 1)));
+                    result.push(temp);
+                }
+            }
+            return result;
+        }
+
+        // --- REPLACEMENT SKILL (V26 - SPECIFIC PRE-MASTERY DROP) ---
+        function solveRecursiveReplacement(start, target, steps, isPlateau, ceiling, history, forceLastBelow) {
+            let finalResult = null;
+
+            function getWeightedJumps() {
+                // Probabilidades: 1(41%), 2(32%), 3(22%), 4(5%)
+                let moves = [1, 2, 3, 4];
+                let attempts = [];
+                while (attempts.length < 4) {
+                    let r = Math.random();
+                    let chosen = 0;
+                    if (r < 0.05) chosen = 4;
+                    else if (r < 0.27) chosen = 3;
+                    else if (r < 0.59) chosen = 2;
+                    else chosen = 1;
+
+                    if (!attempts.includes(chosen)) attempts.push(chosen);
+                    if (attempts.length < 4 && Math.random() > 0.8) {
+                        let left = moves.filter(m => !attempts.includes(m)).sort(() => Math.random() - 0.5);
+                        attempts = attempts.concat(left);
+                    }
+                }
+                return attempts;
+            }
+
+            function backtrack(path, current) {
+                if (finalResult) return;
+
+                if (path.length === steps) {
+                    if (isPlateau) {
+                        if (path.every(v => v >= target && v <= (target + 4))) finalResult = [...path];
+                    } else {
+                        // Ascenso normal: Intentar quedar cerca
+                        if (current >= (target - 4) && current <= ceiling) {
+                            // Doble chequeo de la condición final
+                            if (forceLastBelow && current >= target) return;
+                            finalResult = [...path];
+                        }
+                    }
+                    return;
+                }
+
+                const remaining = steps - path.length;
+                if (Math.abs(target - current) > (remaining * 4) + 5) return;
+
+                let jumps = getWeightedJumps();
+
+                for (let jump of jumps) {
+                    let directions = Math.random() < 0.65 ? [1, -1] : [-1, 1];
+
+                    for (let dir of directions) {
+                        let next = current + (jump * dir);
+
+                        // --- REGLAS BASICAS ---
+                        if (next < 1) continue;
+                        if (next > 100) continue;
+                        if (next === current) continue;
+                        if (next > ceiling) continue;
+
+                        // --- REGLA ESPECIFICA (V26): ULTIMA SEMANA ANTES DE MAESTRIA ---
+                        // Si estamos en la última semana del ascenso (path.length == steps - 1)
+                        // y 'forceLastBelow' es true, el valor DEBE ser < target.
+                        if (!isPlateau && forceLastBelow && path.length === (steps - 1)) {
+                            if (next >= target) continue;
+                        }
+
+                        // --- REGLA DE NO MAESTRÍA PREMATURA (GENERAL) ---
+                        // Si no es la última semana, permitimos tocar target pero NO 2 veces seguidas
+                        if (!isPlateau && next >= target) {
+                            let prev = path.length > 0 ? path[path.length - 1] : (history.length > 0 ? history[history.length - 1] : 0);
+                            if (prev >= target) continue;
+                        }
+
+                        // --- REGLA CONTEXTO PLATEAU ---
+                        if (isPlateau) {
+                            if (next < target || next > (target + 4)) continue;
+                        }
+
+                        path.push(next);
+                        backtrack(path, next);
+                        if (finalResult) return;
+                        path.pop();
+                    }
+                }
+            }
+
+            backtrack([], start);
+
+            // FALLBACK ROBUSTO
+            if (!finalResult) {
+                finalResult = [];
+                let curr = start;
+                for (let i = 0; i < steps; i++) {
+                    let next;
+                    let dir = Math.random() < 0.65 ? 1 : -1;
+
+                    if (!isPlateau && target - curr > 4) dir = 1;
+
+                    let jump = Math.floor(Math.random() * 4) + 1;
+                    next = curr + (dir * jump);
+
+                    if (next < 1) next = 1;
+                    if (next === curr) next = curr + (Math.random() < 0.5 ? 1 : -1);
+                    if (next < 1) next = 1;
+
+                    if (isPlateau) {
+                        if (curr < target) {
+                            let maxPossible = curr + 4;
+                            if (maxPossible < target) next = maxPossible;
+                            else next = Math.max(target, curr + (Math.random() > 0.5 ? 1 : 2));
+                        } else {
+                            if (next < target) next = target;
+                            if (next > target + 4) next = target + 4;
+                        }
+                    } else {
+                        if (next > ceiling) next = ceiling;
+
+                        // Premature mastery general check
+                        if (next >= target) {
+                            let l1 = finalResult.length > 0 ? finalResult[finalResult.length - 1] : (history.length ? history[history.length - 1] : 0);
+                            if (l1 >= target) next = target - 1;
+                        }
+                    }
+
+                    if (Math.abs(next - curr) > 4) next = curr + (next > curr ? 4 : -4);
+                    if (next === curr) next = curr + 1;
+                    if (next < 1) next = 1;
+
+                    // --- REGLA ESPECIFICA (V26) FALLBACK ---
+                    // Si es la última semana de ascenso, forzar hacia abajo
+                    if (!isPlateau && forceLastBelow && i === (steps - 1)) {
+                        if (next >= target) {
+                            next = target - 1;
+                            if (next === curr) next = target - 2; // Evitar repetido
+                        }
+                    }
+
+                    finalResult.push(next);
+                    curr = next;
+                }
+            }
+            return finalResult;
+        }
+
+        function renderTable() {
+            const rows = dataStore[currentTab].filter(r => r.generatedData.length > 0);
+            if (rows.length === 0) {
+                document.getElementById('thead').innerHTML = '';
+                document.getElementById('tbody').innerHTML = '<tr><td style="padding:40px; color:#64748b;">No hay datos generados para esta pestaña.</td></tr>';
+                return;
+            }
+            const maxW = Math.max(...rows.map(d => d.generatedData.length));
+            let h = `<tr><th class="row-name">Nombre (BL)</th>`;
+            for (let i = 1; i <= maxW; i++) h += `<th>S${i}</th>`;
+            document.getElementById('thead').innerHTML = h + `</tr>`;
+            let b = "";
+            rows.forEach(row => {
+                b += `<tr><td class="row-name">${row.name} (BL: ${row.bl})</td>`;
+                row.generatedData.forEach(w => b += `<td class="${w.isMastery ? 'mastery-zone' : ''}">${w.value}</td>`);
+                b += `</tr>`;
+            });
+            document.getElementById('tbody').innerHTML = b;
+        }
+
+        function exportExcel() {
+            const rows = dataStore[currentTab].filter(r => r.generatedData.length > 0);
+            if (rows.length === 0) return alert("Genere datos primero antes de exportar.");
+            const header = ["Conducta", "Baseline", ...rows[0].generatedData.map(w => `S${w.weekNum}`)];
+            const excelData = [header];
+            rows.forEach(r => excelData.push([r.name, r.bl, ...r.generatedData.map(w => w.value)]));
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Reporte_RBT");
+            XLSX.writeFile(wb, `RBT_MasterData_${currentTab}.xlsx`);
+        }
+    </script>
+</body>
+
+</html>

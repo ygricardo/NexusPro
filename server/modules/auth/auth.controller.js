@@ -1,19 +1,21 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, supabaseAdmin } from '../../shared/lib/supabase.js';
 import { config } from '../../shared/config/index.js';
+import logger from '../../shared/lib/logger.js';
 
-const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-very-secure-secret-change-me';
+const JWT_SECRET = config.jwtSecret;
 const TOKEN_EXPIRY = '24h';
 
 export const register = async (req, res) => {
     const { email, password, name } = req.body;
 
     if (!email || !password) {
+        logger.warn('[Auth] Registration attempt with missing credentials', { email: email || 'MISSING' });
         return res.status(400).json({ error: 'Email and password are required' });
     }
+
+    logger.info('[Auth] New registration attempt', { email });
 
     try {
         // 1. Hash password
@@ -28,7 +30,10 @@ export const register = async (req, res) => {
             }
         });
 
-        if (error) throw error;
+        if (error) {
+            logger.error('[Auth] Registration failed at Supabase Auth', { email, error: error.message });
+            throw error;
+        }
 
         // 3. Update profile with our custom hashed password if needed (for custom login)
         const user = data.user;
@@ -42,20 +47,25 @@ export const register = async (req, res) => {
                 created_at: new Date().toISOString()
             });
 
-        if (profileError) throw profileError;
+        if (profileError) {
+            logger.error('[Auth] Profile creation failed after Supabase Auth signup', { email, userId: user.id, error: profileError.message });
+            throw profileError;
+        }
 
+        logger.info('[Auth] User registered successfully', { email, userId: user.id });
         res.status(201).json({ message: 'User registered successfully', userId: user.id });
     } catch (error) {
+        logger.error('[Auth] Registration error', { email, error: error.message });
         res.status(500).json({ error: error.message });
     }
 };
 
+
 export const login = async (req, res) => {
     const { email, password } = req.body;
+    logger.debug(`[Auth] Login attempt`, { email });
 
     try {
-        console.log(`[Auth] Login attempt for: ${email}`);
-
         // 1. Verify password with Supabase Auth FIRST
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
             email,
@@ -63,13 +73,13 @@ export const login = async (req, res) => {
         });
 
         if (authError) {
-            console.error(`[Auth] Supabase Auth error:`, authError.message);
+            logger.warn(`[Auth] Login failed for ${email}: ${authError.message}`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         const user = authData.user;
         const session = authData.session;
-        console.log(`[Auth] Supabase Auth successful for ${email}, User ID: ${user.id}`);
+        logger.info(`[Auth] Login successful for ${email}`, { userId: user.id });
 
         // 2. Get user from profiles (including role)
         const { data: profile, error } = await supabase
@@ -83,9 +93,9 @@ export const login = async (req, res) => {
         let userName = user.user_metadata?.name || email.split('@')[0];
 
         if (error || !profile) {
-            console.warn(`[Auth] Profile not found or RLS blocked access. Using default 'user' role. Error:`, error?.message);
+            logger.warn(`[Auth] Profile not found or RLS blocked access for ${email}`, { error: error?.message });
         } else {
-            console.log(`[Auth] Profile found, role: ${profile.role_id}`);
+            logger.debug(`[Auth] Profile found for ${email}`, { role: profile.role_id });
             userRole = profile.role_id || 'user';
             permissions = profile.roles?.role_permissions?.map(rp => rp.permission_name) || [];
             userName = profile.name || userName;
@@ -123,15 +133,13 @@ export const login = async (req, res) => {
 };
 
 export const getProfile = async (req, res) => {
-    // Initialize Admin/Service Client for reliable profile fetching
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-        auth: { autoRefreshToken: false, persistSession: false }
-    });
+    if (!supabaseAdmin) {
+        logger.error('[Auth] getProfile - supabaseAdmin client unavailable');
+        return res.status(500).json({ error: 'Supabase service role unavailable' });
+    }
 
     if (!req.user || !req.user.id) {
-        console.warn('[Auth] getProfile - Missing user ID in request');
+        logger.warn('[Auth] getProfile - Missing user ID in request');
         return res.status(401).json({ error: 'Unauthorized: No user session found' });
     }
 
@@ -143,11 +151,11 @@ export const getProfile = async (req, res) => {
             .single();
 
         if (error || !profile) {
-            console.warn('[Auth] getProfile - Profile not found or error, returning JWT payload as fallback:', error?.message);
+            logger.warn(`[Auth] getProfile - Profile not found for ${req.user.id}`, { error: error?.message });
             return res.json({ user: req.user });
         }
 
-        console.log(`[Auth] Fresh Profile Data for ${profile.email}: Plan=${profile.plan}, Access=${JSON.stringify(profile.access)}`);
+        logger.debug(`[Auth] Fresh Profile Data for ${profile.email}`, { plan: profile.plan });
 
         const freshUser = {
             id: profile.id,
@@ -162,7 +170,7 @@ export const getProfile = async (req, res) => {
         res.json({ user: freshUser });
 
     } catch (err) {
-        console.error('[Auth] getProfile error:', err);
-        res.json({ user: req.user });
+        logger.error('[Auth] getProfile error', { error: err.message });
+        res.status(500).json({ error: err.message });
     }
 };

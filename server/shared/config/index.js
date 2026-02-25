@@ -14,5 +14,6 @@ export const config = {
     stripe: {
         secretKey: process.env.STRIPE_SECRET_KEY,
     },
+    jwtSecret: process.env.JWT_SECRET,
     nodeEnv: process.env.NODE_ENV || 'development',
 };

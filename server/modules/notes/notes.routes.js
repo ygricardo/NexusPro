@@ -1,8 +1,10 @@
 import express from 'express';
 import { authenticate } from '../auth/auth.middleware.js';
-import { saveNote, getNotesByUser, getNotesByClient, deleteNote } from './notes.controller.js';
+import { saveNote, updateNote, getNotesByUser, getNotesByClient, deleteNote, NoteSchema } from './notes.controller.js';
+import { validateRequest } from '../../shared/middleware/validateRequest.js';
 import { createPreset, getPresets, deletePreset } from './presets.controller.js';
-import { saveEntry, getHistory, deleteEntry } from './history.controller.js';
+import { saveEntry, updateEntry, getHistory, deleteEntry, HistoryEntrySchema } from './history.controller.js';
+
 
 const router = express.Router();
 
@@ -20,7 +22,8 @@ router.use(authenticate);
  *     security:
  *       - bearerAuth: []
  */
-router.post('/notes', saveNote);
+router.post('/notes', validateRequest(NoteSchema), saveNote);
+router.put('/notes/:id', validateRequest(NoteSchema), updateNote);
 router.get('/notes', getNotesByUser);
 router.get('/notes/client/:clientId', getNotesByClient);
 router.delete('/notes/:id', deleteNote);
@@ -51,8 +54,10 @@ router.delete('/presets/:id', deletePreset);
  *     security:
  *       - bearerAuth: []
  */
-router.post('/history', saveEntry);
+router.post('/history', validateRequest(HistoryEntrySchema), saveEntry);
+router.put('/history/:id', validateRequest(HistoryEntrySchema), updateEntry);
 router.get('/history/:type', getHistory);
 router.delete('/history/:id', deleteEntry);
+
 
 export default router;

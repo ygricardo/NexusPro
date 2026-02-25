@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabaseClient';
 import { authApi } from '../lib/api';
 import { UserPlan } from '../types';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 
 // Define available modules for the system
 const SYSTEM_MODULES = [
@@ -40,12 +41,14 @@ export const AdminUsers = () => {
     const { t } = useLanguage();
     const { user } = useUser();
     const { confirm, showAlert } = useConfirm();
+    const toast = useToast();
 
     // State
     const [users, setUsers] = useState<AdminUserType[]>([]);
     const [loading, setLoading] = useState(true);
     const [editingUser, setEditingUser] = useState<AdminUserType | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [result_snapshot, setResultSnapshot] = useState<any>(null);
 
     // Fetch users from Supabase and subscribe to changes
     useEffect(() => {
@@ -74,25 +77,57 @@ export const AdminUsers = () => {
 
     const fetchUsers = async () => {
         setLoading(true);
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('*');
+        try {
+            const response = await authApi.getUsers();
+            if (!response.ok) {
+                const status = response.status;
+                const text = await response.text();
+                console.error(`[Admin] API error status ${status}:`, text);
+                toast.error(`Error ${status}: Failed to reach server`);
+                setLoading(false);
+                return;
+            }
 
-        if (error) {
+            const contentType = response.headers.get('content-type');
+            let result: any = {};
+
+            if (contentType && contentType.includes('application/json')) {
+                result = await response.json();
+            } else {
+                const text = await response.text();
+                result = { success: false, message: text || 'Empty response from server' };
+            }
+
+            setResultSnapshot(result);
+
+            let usersList = [];
+            if (Array.isArray(result)) {
+                usersList = result;
+            } else if (result.success && Array.isArray(result.data)) {
+                usersList = result.data;
+            }
+
+            if (usersList.length > 0 || Array.isArray(result) || (result.success && result.data)) {
+                console.log('[Admin] Received users data:', usersList.length, 'items');
+                // Map Supabase profiles to AdminUserType
+                const mappedUsers: AdminUserType[] = usersList.map((profile: any) => ({
+                    id: profile.id,
+                    name: profile.full_name || 'Unknown',
+                    email: profile.email || 'No Email',
+                    role: (profile.role_id?.toLowerCase() === 'admin' ? 'admin' : 'user'), // Use role_id
+                    status: (profile.status as 'Active' | 'Offline' | 'Inactive') || 'Active',
+                    avatar_color: 'bg-neutral-200 dark:bg-neutral-700',
+                    access: profile.access || [],
+                    plan: (profile.plan?.trim().toLowerCase() as UserPlan) || 'no_plan'
+                }));
+                setUsers(mappedUsers);
+            } else {
+                console.error('Error fetching users:', result.message || 'No data array found');
+                toast.error('Failed to fetch users: ' + (result.message || 'Data format error'));
+            }
+        } catch (error) {
             console.error('Error fetching users:', error);
-        } else if (data) {
-            // Map Supabase profiles to AdminUserType
-            const mappedUsers: AdminUserType[] = data.map(profile => ({
-                id: profile.id,
-                name: profile.full_name || 'Unknown',
-                email: profile.email || 'No Email',
-                role: (profile.role?.toLowerCase() === 'admin' ? 'admin' : 'user'), // Normalize to user/admin
-                status: (profile.status as 'Active' | 'Offline' | 'Inactive') || 'Active',
-                avatar_color: 'bg-neutral-200 dark:bg-neutral-700', // You can randomize this if you want
-                access: profile.access || [],
-                plan: (profile.plan?.trim().toLowerCase() as UserPlan) || 'no_plan'
-            }));
-            setUsers(mappedUsers);
+            toast.error('Network error while fetching users');
         }
         setLoading(false);
     };
@@ -158,7 +193,15 @@ export const AdminUsers = () => {
         try {
             console.log('[Admin] Instant Save:', profileData);
             const response = await authApi.updateUser(userData.id, profileData);
-            const result = await response.json();
+
+            const contentType = response.headers.get('content-type');
+            let result: any = {};
+            if (contentType && contentType.includes('application/json')) {
+                result = await response.json();
+            } else {
+                const text = await response.text();
+                result = { success: false, message: text || 'Empty response from server' };
+            }
 
             if (!response.ok || !result.success) {
                 await showAlert('Error', `Failed to save: ${result.message}`, 'danger');
@@ -359,6 +402,11 @@ export const AdminUsers = () => {
                             <tr>
                                 <td colSpan={6} className="py-12 text-center text-neutral-500 dark:text-neutral-400">
                                     No users found matching "{searchTerm}"
+                                    {!loading && users.length === 0 && (
+                                        <div className="mt-2 text-xs opacity-50">
+                                            Debug: API returned {JSON.stringify(result_snapshot || 'no-data')}
+                                        </div>
+                                    )}
                                 </td>
                             </tr>
                         )}

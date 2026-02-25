@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import ClientSelector from '../components/ClientSelector';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useUser } from '../contexts/UserContext';
@@ -9,8 +9,8 @@ import { supabase } from '../lib/supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
-import * as XLSX from 'xlsx';
 import { authApi } from '../lib/api';
+import { exportNotesToPDF } from '../lib/exportPDF';
 
 type TabType = 'maladaptives' | 'replacements';
 
@@ -345,6 +345,7 @@ const BCBAGenerator = () => {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [clientName, setClientName] = useState('');
     const [clients, setClients] = useState<Client[]>([]);
+    const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
     const [data, setData] = useState<DataState>({
@@ -395,6 +396,7 @@ const BCBAGenerator = () => {
                     if (parsed.replacementRows) setReplacementRows(parsed.replacementRows);
                     if (parsed.data) setData(parsed.data);
                     if (parsed.selectedClientId) setSelectedClientId(parsed.selectedClientId);
+                    if (parsed.activeHistoryId) setActiveHistoryId(parsed.activeHistoryId);
                 } else {
                     // Stale data or different user -> Clear it
                     sessionStorage.removeItem('bcba_session_state');
@@ -414,10 +416,11 @@ const BCBAGenerator = () => {
             maladaptiveRows,
             replacementRows,
             data,
-            selectedClientId
+            selectedClientId,
+            activeHistoryId
         };
         sessionStorage.setItem('bcba_session_state', JSON.stringify(stateToSave));
-    }, [maladaptiveRows, replacementRows, data, selectedClientId, isLoaded, user]);
+    }, [maladaptiveRows, replacementRows, data, selectedClientId, activeHistoryId, isLoaded, user]);
 
     // Clear Session on Logout
     useEffect(() => {
@@ -426,27 +429,32 @@ const BCBAGenerator = () => {
         }
     }, [user, loading]);
 
-    const exportExcel = () => {
+    const exportExcel = async () => {
         const rows = Object.keys(data[currentTab]);
         if (rows.length === 0) {
             showAlert('Error', 'Generate data before exporting.', 'danger');
             return;
         }
 
+        const ExcelJS = await import('exceljs');
+        const { saveAs } = await import('file-saver');
+
+        const workbook = new ExcelJS.default.Workbook();
+        const worksheet = workbook.addWorksheet('Reporte_BCBA');
+
         const header = ["Conducta", "Baseline"];
         for (let i = 1; i <= maxWeeks; i++) header.push(`S${i}`);
+        worksheet.addRow(header);
 
-        const excelData = [header];
         rows.forEach(key => {
             const values = data[currentTab][key];
             const rowConfig = (currentTab === 'maladaptives' ? maladaptiveRows : replacementRows).find(r => r.name === key);
-            excelData.push([key, rowConfig?.baseline || '', ...values.map(v => v ?? '')]);
+            worksheet.addRow([key, rowConfig?.baseline || '', ...values.map(v => v ?? '')]);
         });
 
-        const ws = XLSX.utils.aoa_to_sheet(excelData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Reporte_BCBA");
-        XLSX.writeFile(wb, `BCBA_MasterData_${currentTab}.xlsx`);
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, `BCBA_MasterData_${currentTab}.xlsx`);
     };
 
     // Fetch Clients & Presets
@@ -686,6 +694,7 @@ const BCBAGenerator = () => {
         if (isConfirmed) {
             setActiveRows([]);
             setData(prev => ({ ...prev, [currentTab]: {} }));
+            setActiveHistoryId(null);
         }
     };
 
@@ -700,10 +709,19 @@ const BCBAGenerator = () => {
                 output_data: data
             };
 
-            const response = await authApi.saveGenerationHistory(historyPayload);
+            let response;
+            if (activeHistoryId) {
+                response = await authApi.updateGenerationHistory(activeHistoryId, historyPayload);
+            } else {
+                response = await authApi.saveGenerationHistory(historyPayload);
+            }
+
             if (response.ok) {
-                await showAlert('Success', 'Saved successfully!', 'success');
-                setActiveTab('history');
+                await showAlert('Success', activeHistoryId ? 'History updated!' : 'Saved successfully!', 'success');
+                const json = await response.json();
+                if (!activeHistoryId && json.data) {
+                    setActiveHistoryId(json.data.id);
+                }
                 fetchHistory();
             } else {
                 await showAlert('Error', 'Failed to save.', 'danger');
@@ -731,7 +749,13 @@ const BCBAGenerator = () => {
         <Layout>
             <AnimatePresence mode="wait">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full mb-6">
-                    <div>
+                    <div className="flex items-center gap-3">
+                        {urlClientId && (
+                            <Link to={`/clients/${urlClientId}`} className="flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors mr-2">
+                                <span className="material-symbols-outlined text-sm">arrow_back</span>
+                                Back
+                            </Link>
+                        )}
                         <h1 className="text-3xl font-bold text-neutral-900 dark:text-white flex items-center gap-3">
                             <span className="material-symbols-outlined text-primary text-4xl">ssid_chart</span>
                             {t('bcbaGenerator')}
@@ -744,6 +768,36 @@ const BCBAGenerator = () => {
                         >
                             <span className="material-symbols-outlined text-sm">download</span>
                             Export Excel
+                        </button>
+                        <button
+                            onClick={() => {
+                                const hasMaladaptives = Object.keys(data.maladaptives).length > 0;
+                                const hasReplacements = Object.keys(data.replacements).length > 0;
+                                if (!hasMaladaptives && !hasReplacements) { showError('No data to export. Generate data first.'); return; }
+                                const clientLabel = clients.find(c => c.id === selectedClientId)
+                                    ? `${clients.find(c => c.id === selectedClientId)!.first_name} ${clients.find(c => c.id === selectedClientId)!.last_name}`
+                                    : 'Client';
+                                const lines: string[] = [];
+                                if (hasMaladaptives) {
+                                    lines.push('=== MALADAPTIVE BEHAVIORS ===');
+                                    Object.entries(data.maladaptives).forEach(([name, values]) => {
+                                        lines.push(`${name}: ${values.map((v, i) => `Wk${i + 1}:${v ?? '-'}`).join(' | ')}`);
+                                    });
+                                }
+                                if (hasReplacements) {
+                                    lines.push('');
+                                    lines.push('=== REPLACEMENT BEHAVIORS ===');
+                                    Object.entries(data.replacements).forEach(([name, values]) => {
+                                        lines.push(`${name}: ${values.map((v, i) => `Wk${i + 1}:${v ?? '-'}`).join(' | ')}`);
+                                    });
+                                }
+                                exportNotesToPDF({ title: 'Weekly Data Report', clientTag: clientLabel, generatorType: 'BCBA Weekly Report', notes: lines.join('\n') });
+                                success('PDF exported!');
+                            }}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-lg shadow-red-500/20 transition-all flex items-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-sm">picture_as_pdf</span>
+                            Export PDF
                         </button>
                         <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-lg">
                             {['generator', 'history'].map(tab => (
@@ -1034,8 +1088,9 @@ const BCBAGenerator = () => {
                                 </div>
 
                                 <div className="flex justify-end gap-3 p-4 bg-neutral-50 dark:bg-neutral-900 rounded-xl">
-                                    <button onClick={handleSave} className="flex items-center gap-2 px-6 py-3 bg-neutral-800 text-white font-bold rounded-lg hover:bg-neutral-700">
-                                        <span className="material-symbols-outlined">save</span> Save History
+                                    <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-6 py-3 bg-neutral-800 text-white font-bold rounded-lg hover:bg-neutral-700 disabled:opacity-50">
+                                        <span className="material-symbols-outlined">save</span>
+                                        {saving ? 'Saving...' : (activeHistoryId ? 'Update' : 'Save')}
                                     </button>
                                 </div>
                             </>
@@ -1066,6 +1121,7 @@ const BCBAGenerator = () => {
                                                         if (h.input_data.maladaptives) setMaladaptiveRows(h.input_data.maladaptives);
                                                         if (h.input_data.replacements) setReplacementRows(h.input_data.replacements);
                                                     }
+                                                    setActiveHistoryId(h.id);
                                                     setActiveTab('generator');
                                                     showAlert('Success', 'Data loaded from history.', 'success');
                                                 }}

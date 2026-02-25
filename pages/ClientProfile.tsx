@@ -5,6 +5,8 @@ import Layout from '../components/Layout';
 import { authApi } from '../lib/api';
 import { motion } from 'framer-motion';
 import { useUser } from '../contexts/UserContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import UpgradeModal from '../components/UpgradeModal';
 
 const ClientProfile = () => {
@@ -14,6 +16,8 @@ const ClientProfile = () => {
     const [loading, setLoading] = useState(true);
     const [history, setHistory] = useState<any>(null);
     const { user, checkAccess } = useUser();
+    const { confirm } = useConfirm();
+    const { success, error: toastError } = useToast();
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
     // Determine initial tab based on plan
@@ -28,6 +32,40 @@ const ClientProfile = () => {
             fetchHistory();
         }
     }, [id]);
+
+    const handleDeleteNote = async (e: React.MouseEvent, noteId: string) => {
+        e.stopPropagation();
+        if (await confirm({ title: 'Delete Note?', message: 'Are you sure you want to permanently delete this session note?' })) {
+            try {
+                const res = await authApi.deleteNote(noteId);
+                if (res.ok) {
+                    success('Note deleted');
+                    fetchHistory();
+                } else {
+                    toastError('Fail to delete note');
+                }
+            } catch (error) {
+                toastError('Error deleting note');
+            }
+        }
+    };
+
+    const handleDeleteRecord = async (e: React.MouseEvent, recordId: string) => {
+        e.stopPropagation();
+        if (await confirm({ title: 'Delete Record?', message: 'Are you sure you want to permanently delete this data record?' })) {
+            try {
+                const res = await authApi.deleteGenerationHistory(recordId);
+                if (res.ok) {
+                    success('Record deleted');
+                    fetchHistory();
+                } else {
+                    toastError('Fail to delete record');
+                }
+            } catch (error) {
+                toastError('Error deleting record');
+            }
+        }
+    };
 
     const fetchClientDetails = async () => {
         try {
@@ -73,7 +111,7 @@ const ClientProfile = () => {
             <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
                 {/* HERO HEADER - Folder Style */}
                 <div className="bg-white dark:bg-surface-dark border-b border-neutral-200 dark:border-neutral-800 shadow-sm">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                    <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
                         <div className="mb-4">
                             <Link to="/caseload" className="inline-flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors">
                                 <span className="material-symbols-outlined text-sm">arrow_back</span>
@@ -123,7 +161,7 @@ const ClientProfile = () => {
 
 
                 {/* MAIN CONTENT */}
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
 
                     <UpgradeModal
                         isOpen={isUpgradeModalOpen}
@@ -231,12 +269,29 @@ const ClientProfile = () => {
                                                                     <div className="text-xs text-neutral-500">Created by {note.provider_name || 'You'}</div>
                                                                 </div>
                                                             </div>
-                                                            <div className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-black px-2 py-1 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg tracking-wider">{note.case_tag || 'Standard'}</div>
+                                                            <div className="flex items-center gap-2 relative z-20">
+                                                                <button
+                                                                    onClick={(e) => handleDeleteNote(e, note.id)}
+                                                                    className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                    title="Delete Note"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        sessionStorage.setItem('session_note_edit_id', note.id);
+                                                                        navigate(`/session-note?client_id=${client.id}`);
+                                                                    }}
+                                                                    className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors flex items-center gap-1 text-neutral-600 dark:text-neutral-300 opacity-0 group-hover:opacity-100"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[14px]">edit</span>
+                                                                    Edit Note
+                                                                </button>
+                                                                <div className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-black px-2 py-1 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg tracking-wider">{note.case_tag || 'Standard'}</div>
+                                                            </div>
                                                         </div>
                                                         <p className="text-sm text-neutral-600 dark:text-neutral-300 line-clamp-2 pl-13 relative z-10">"{note.content.substring(0, 200)}..."</p>
-                                                        <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <span className="material-symbols-outlined text-indigo-400">arrow_forward</span>
-                                                        </div>
                                                     </div>
                                                 ))
                                             )}
@@ -257,10 +312,11 @@ const ClientProfile = () => {
                                             </div>
                                             <Link
                                                 to={`/rbt-generator?client_id=${client.id}`}
+                                                onClick={() => sessionStorage.removeItem('rbt_session_state')}
                                                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold transition-colors shadow-lg shadow-blue-200 dark:shadow-none"
                                             >
                                                 <span className="material-symbols-outlined text-xl">add</span>
-                                                Log Data
+                                                New Daily Data
                                             </Link>
                                         </div>
 
@@ -273,22 +329,58 @@ const ClientProfile = () => {
                                                 />
                                             ) : (
                                                 history.daily.map((record: any) => (
-                                                    <div key={record.id} className="flex justify-between items-center p-4 bg-white dark:bg-neutral-900/50 rounded-xl border border-neutral-100 dark:border-neutral-800 hover:shadow-md transition-shadow">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="size-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                                                                <span className="material-symbols-outlined">show_chart</span>
+                                                    <div key={record.id} className="p-5 bg-white dark:bg-neutral-900/50 rounded-xl border border-neutral-100 dark:border-neutral-800 hover:shadow-md transition-shadow group relative overflow-hidden">
+                                                        <div className="flex justify-between items-center mb-4 relative z-10">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="size-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                                                                    <span className="material-symbols-outlined">calculate</span>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-base font-bold text-neutral-900 dark:text-white">Daily Data Session</div>
+                                                                    <div className="text-xs text-neutral-500 flex items-center gap-1">
+                                                                        <span className="material-symbols-outlined text-[10px]">calendar_today</span>
+                                                                        {new Date(record.created_at).toLocaleDateString()}
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                            <div>
-                                                                <div className="text-base font-bold text-neutral-900 dark:text-white">{record.behavior_name}</div>
-                                                                <div className="text-xs text-neutral-500 flex items-center gap-1">
-                                                                    <span className="material-symbols-outlined text-[10px]">calendar_today</span>
-                                                                    {new Date(record.created_at).toLocaleDateString()}
+                                                            <div className="flex items-center gap-2 relative z-20">
+                                                                <button
+                                                                    onClick={(e) => handleDeleteRecord(e, record.id)}
+                                                                    className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                    title="Delete Record"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const stateToSave = {
+                                                                            userId: user?.id,
+                                                                            inputs: record.input_data || [],
+                                                                            results: record.output_data || [],
+                                                                            selectedClientId: client.id,
+                                                                            activeHistoryId: record.id
+                                                                        };
+                                                                        sessionStorage.setItem('rbt_session_state', JSON.stringify(stateToSave));
+                                                                        navigate(`/rbt-generator?client_id=${client.id}`);
+                                                                    }}
+                                                                    className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors flex items-center gap-1 text-neutral-600 dark:text-neutral-300"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[14px]">edit</span>
+                                                                    Edit Data
+                                                                </button>
+                                                                <div className="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold px-3 py-1 rounded-lg text-xs">
+                                                                    {record.behaviors?.length || 0} Behaviors
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div className="text-right">
-                                                            <span className="block text-xs text-neutral-400 font-bold uppercase tracking-wider mb-1">Total Count</span>
-                                                            <div className="text-2xl font-black text-neutral-900 dark:text-white">{record.total}</div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 relative z-10">
+                                                            {record.behaviors && record.behaviors.map((b: any, i: number) => (
+                                                                <div key={i} className="flex justify-between items-center bg-neutral-50 dark:bg-neutral-800 p-3 rounded-lg border border-neutral-100 dark:border-neutral-700">
+                                                                    <span className="text-sm text-neutral-700 dark:text-neutral-300 font-medium truncate pr-2">{b.name}</span>
+                                                                    <span className="text-lg font-black text-neutral-900 dark:text-white">{b.total}</span>
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     </div>
                                                 ))
@@ -310,10 +402,11 @@ const ClientProfile = () => {
                                             </div>
                                             <Link
                                                 to={`/bcba-generator?client_id=${client.id}`}
+                                                onClick={() => sessionStorage.removeItem('bcba_session_state')}
                                                 className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl font-bold transition-colors shadow-lg shadow-purple-200 dark:shadow-none"
                                             >
                                                 <span className="material-symbols-outlined text-xl">add</span>
-                                                New Analysis
+                                                New Weekly Data
                                             </Link>
                                         </div>
 
@@ -326,31 +419,89 @@ const ClientProfile = () => {
                                                 />
                                             ) : (
                                                 history.weekly.map((record: any) => (
-                                                    <div key={record.id} className="flex justify-between items-center p-4 bg-white dark:bg-neutral-900/50 rounded-xl border border-neutral-100 dark:border-neutral-800 hover:shadow-md transition-shadow">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="size-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                                                                <span className="material-symbols-outlined">analytics</span>
+                                                    <div key={record.id} className="p-5 bg-white dark:bg-neutral-900/50 rounded-xl border border-neutral-100 dark:border-neutral-800 hover:shadow-md transition-shadow group relative overflow-hidden">
+                                                        <div className="flex justify-between items-center mb-4 relative z-10">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="size-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                                                                    <span className="material-symbols-outlined">analytics</span>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-base font-bold text-neutral-900 dark:text-white">Weekly Data Analysis</div>
+                                                                    <div className="text-xs text-neutral-500 flex items-center gap-1">
+                                                                        <span className="material-symbols-outlined text-[10px]">calendar_today</span>
+                                                                        {new Date(record.created_at).toLocaleDateString()}
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                            <div>
-                                                                <div className="text-base font-bold text-neutral-900 dark:text-white">{record.behavior_name}</div>
-                                                                <div className="text-xs text-neutral-500 flex items-center gap-1">
-                                                                    <span className="material-symbols-outlined text-[10px]">calendar_today</span>
-                                                                    {new Date(record.created_at).toLocaleDateString()}
+                                                            <div className="flex items-center gap-2 relative z-20">
+                                                                <button
+                                                                    onClick={(e) => handleDeleteRecord(e, record.id)}
+                                                                    className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                    title="Delete Record"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const stateToSave = {
+                                                                            userId: user?.id,
+                                                                            maladaptiveRows: record.maladaptives || [],
+                                                                            replacementRows: record.replacements || [],
+                                                                            data: record.output_data || {
+                                                                                maladaptives: {},
+                                                                                replacements: {},
+                                                                                mastery: {}
+                                                                            },
+                                                                            selectedClientId: client.id,
+                                                                            activeHistoryId: record.id
+                                                                        };
+                                                                        sessionStorage.setItem('bcba_session_state', JSON.stringify(stateToSave));
+                                                                        navigate(`/bcba-generator?client_id=${client.id}`);
+                                                                    }}
+                                                                    className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors flex items-center gap-1 text-neutral-600 dark:text-neutral-300"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[14px]">edit</span>
+                                                                    Edit Analysis
+                                                                </button>
+                                                                <div className="bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-bold px-3 py-1 rounded-lg text-xs">
+                                                                    {(record.maladaptives?.length || 0) + (record.replacements?.length || 0)} Behaviors
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="text-right">
-                                                                <span className="block text-xs text-neutral-400 font-bold uppercase tracking-wider mb-1">Baseline</span>
-                                                                <div className="text-lg font-bold text-neutral-700 dark:text-neutral-300">{record.baseline || '-'}</div>
-                                                            </div>
-                                                            <div className={`flex flex-col items-center justify-center w-24 py-1 rounded-lg border ${record.trend === 'up'
-                                                                ? 'bg-red-50 border-red-100 text-red-600'
-                                                                : 'bg-emerald-50 border-emerald-100 text-emerald-600'
-                                                                }`}>
-                                                                <span className="text-xs font-black uppercase">{record.trend || 'STABLE'}</span>
-                                                                <span className="material-symbols-outlined">{record.trend === 'up' ? 'trending_up' : 'trending_down'}</span>
-                                                            </div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                                                            {record.maladaptives && record.maladaptives.length > 0 && (
+                                                                <div className="bg-red-50/50 dark:bg-red-900/10 p-3 rounded-xl border border-red-100 dark:border-red-900/20">
+                                                                    <div className="text-[10px] font-black text-red-600 dark:text-red-400 mb-2 uppercase tracking-wider">Maladaptive Behaviors</div>
+                                                                    <div className="space-y-2">
+                                                                        {record.maladaptives.map((b: any, i: number) => (
+                                                                            <div key={i} className="flex justify-between items-center bg-white dark:bg-neutral-800 p-2 rounded-lg border border-red-100 dark:border-red-900/30">
+                                                                                <span className="text-sm text-neutral-700 dark:text-neutral-300 font-medium truncate pr-2">{b.name}</span>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="text-xs text-neutral-400">Baseline:</span>
+                                                                                    <span className="text-sm font-bold text-neutral-900 dark:text-white">{b.baseline}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {record.replacements && record.replacements.length > 0 && (
+                                                                <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/20">
+                                                                    <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 mb-2 uppercase tracking-wider">Replacement Skills</div>
+                                                                    <div className="space-y-2">
+                                                                        {record.replacements.map((b: any, i: number) => (
+                                                                            <div key={i} className="flex justify-between items-center bg-white dark:bg-neutral-800 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+                                                                                <span className="text-sm text-neutral-700 dark:text-neutral-300 font-medium truncate pr-2">{b.name}</span>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="text-xs text-neutral-400">Baseline:</span>
+                                                                                    <span className="text-sm font-bold text-neutral-900 dark:text-white">{b.baseline}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 ))

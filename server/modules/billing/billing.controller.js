@@ -1,20 +1,7 @@
 import Stripe from 'stripe';
 import { config } from '../../shared/config/index.js';
-import { createClient } from '@supabase/supabase-js';
-
-const getAdminClient = () => {
-    const serviceRoleKey = config.supabase.serviceRoleKey;
-    const supabaseUrl = config.supabase.url;
-
-    if (!supabaseUrl || !serviceRoleKey) {
-        console.error('[Stripe Webhook] Missing Config: VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-        return null;
-    }
-
-    return createClient(supabaseUrl, serviceRoleKey, {
-        auth: { autoRefreshToken: false, persistSession: false }
-    });
-};
+import { supabaseAdmin } from '../../shared/lib/supabase.js';
+import logger from '../../shared/lib/logger.js';
 
 const stripe = new Stripe(config.stripe.secretKey);
 
@@ -100,12 +87,14 @@ export const createCheckoutSession = async (req, res) => {
             cancel_url: `${req.headers.origin}/#/plans`,
         });
 
+        logger.info(`[Stripe] Checkout session created`, { planId, interval, userId: user.id, sessionId: session.id });
         res.json({ url: session.url });
     } catch (error) {
-        console.error('Stripe Checkout Error:', error);
+        logger.error('[Stripe] Checkout Error', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const handleWebhook = async (req, res) => {
     const sig = req.headers['stripe-signature'];
@@ -116,7 +105,7 @@ export const handleWebhook = async (req, res) => {
     try {
         event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
     } catch (err) {
-        console.error(`[Stripe Webhook] Error verifying signature: ${err.message}`);
+        logger.warn(`[Stripe Webhook] Error verifying signature`, { error: err.message });
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
@@ -128,10 +117,9 @@ export const handleWebhook = async (req, res) => {
             const customerId = session.customer;
             const subscriptionId = session.subscription;
 
-            console.log(`[Stripe Webhook] Payment success for User ${userId}, Plan: ${planId}`);
+            logger.info(`[Stripe Webhook] Payment success`, { userId, planId, customerId });
 
             if (userId && planId) {
-                const supabaseAdmin = getAdminClient();
                 if (supabaseAdmin) {
                     const modules = getPlanModules(planId);
                     const { error } = await supabaseAdmin
@@ -147,9 +135,9 @@ export const handleWebhook = async (req, res) => {
                         .eq('id', userId);
 
                     if (error) {
-                        console.error('[Stripe Webhook] Failed to update profile:', error);
+                        logger.error('[Stripe Webhook] Failed to update profile', { error: error.message, userId });
                     } else {
-                        console.log('[Stripe Webhook] Profile updated successfully');
+                        logger.info('[Stripe Webhook] Profile updated successfully', { userId });
                     }
                 }
             }
@@ -158,16 +146,15 @@ export const handleWebhook = async (req, res) => {
 
         case 'invoice.payment_succeeded': {
             const invoice = event.data.object;
-            console.log(`[Stripe Webhook] Invoice payment succeeded for ${invoice.customer_email}`);
+            logger.info(`[Stripe Webhook] Invoice payment succeeded`, { email: invoice.customer_email, amount: invoice.amount_paid });
             break;
         }
 
         case 'customer.subscription.deleted': {
             const subscription = event.data.object;
             const customerId = subscription.customer;
-            console.log(`[Stripe Webhook] Subscription deleted for customer ${customerId}`);
+            logger.info(`[Stripe Webhook] Subscription deleted`, { customerId });
 
-            const supabaseAdmin = getAdminClient();
             if (supabaseAdmin) {
                 let { data: user, error } = await supabaseAdmin
                     .from('profiles')
@@ -187,12 +174,12 @@ export const handleWebhook = async (req, res) => {
                             user = userByEmail;
                         }
                     } catch (stripeError) {
-                        console.error('Error fetching stripe customer:', stripeError);
+                        logger.error('[Stripe Webhook] Error fetching Stripe customer', { customerId, error: stripeError.message });
                     }
                 }
 
                 if (user) {
-                    console.log(`[Stripe Webhook] Revoking access for user ${user.email}`);
+                    logger.info(`[Stripe Webhook] Revoking access`, { email: user.email, userId: user.id });
                     await supabaseAdmin
                         .from('profiles')
                         .update({
@@ -203,14 +190,14 @@ export const handleWebhook = async (req, res) => {
                         })
                         .eq('id', user.id);
                 } else {
-                    console.warn(`[Stripe Webhook] Could not find user for deleted subscription (Customer: ${customerId})`);
+                    logger.warn(`[Stripe Webhook] User not found for deleted sub`, { customerId });
                 }
             }
             break;
         }
 
         default:
-            console.log(`[Stripe Webhook] Unhandled event type ${event.type}`);
+            logger.debug(`[Stripe Webhook] Unhandled event type received`, { eventType: event.type });
     }
 
     res.json({ received: true });
@@ -221,10 +208,11 @@ export const cancelSubscription = async (req, res) => {
         const user = req.user;
         const email = user.email;
 
-        console.log(`[Stripe] Attempting to cancel subscription for ${email}`);
+        logger.info(`[Stripe] Cancel subscription requested`, { userId: user.id, email });
 
         const customers = await stripe.customers.list({ email: email, limit: 1 });
         if (customers.data.length === 0) {
+            logger.warn('[Stripe] Cancel failed: no Stripe customer found', { email, userId: user.id });
             return res.status(404).json({ error: 'No Stripe customer found' });
         }
         const customer = customers.data[0];
@@ -236,6 +224,7 @@ export const cancelSubscription = async (req, res) => {
         });
 
         if (subscriptions.data.length === 0) {
+            logger.warn('[Stripe] Cancel failed: no active subscription found', { email, userId: user.id });
             return res.status(404).json({ error: 'No active subscription found' });
         }
 
@@ -245,7 +234,7 @@ export const cancelSubscription = async (req, res) => {
             cancel_at_period_end: true
         });
 
-        console.log(`[Stripe] Subscription ${subscription.id} set to cancel at period end`);
+        logger.info(`[Stripe] Subscription set to cancel at period end`, { subscriptionId: subscription.id, userId: user.id });
 
         res.json({
             message: 'Subscription will be canceled at the end of the billing period',
@@ -253,10 +242,11 @@ export const cancelSubscription = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Cancel Subscription Error:', error);
+        logger.error('[Stripe] Cancel Subscription Error', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const verifySession = async (req, res) => {
     const { sessionId } = req.body;
@@ -275,8 +265,8 @@ export const verifySession = async (req, res) => {
 
         if (session.payment_status === 'paid') {
             const planId = session.metadata?.planId;
+            logger.info('[Stripe] Session verified as paid', { sessionId, planId, userId: user.id });
 
-            const supabaseAdmin = getAdminClient();
             if (supabaseAdmin && planId) {
                 const modules = getPlanModules(planId);
                 const { error } = await supabaseAdmin
@@ -289,18 +279,24 @@ export const verifySession = async (req, res) => {
                     })
                     .eq('id', user.id);
 
-                if (error) throw error;
+                if (error) {
+                    logger.error('[Stripe] verifySession - Failed to update profile', { error: error.message, userId: user.id });
+                    throw error;
+                }
+                logger.info('[Stripe] Profile updated via verifySession', { planId, userId: user.id });
             }
 
             return res.json({ success: true, plan: planId });
         } else {
+            logger.warn('[Stripe] verifySession - Payment not completed', { sessionId, status: session.payment_status, userId: user.id });
             return res.status(400).json({ error: 'Payment not completed or pending' });
         }
     } catch (error) {
-        console.error('Verify Session Error:', error);
+        logger.error('[Stripe] Verify Session Error', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const getSubscriptionDetails = async (req, res) => {
     try {
@@ -320,10 +316,12 @@ export const getSubscriptionDetails = async (req, res) => {
         });
 
         if (subscriptions.data.length === 0) {
+            logger.info('[Stripe] getSubscriptionDetails - No active subscription', { userId: user.id });
             return res.json({ subscription: null });
         }
 
         const subscription = subscriptions.data[0];
+        logger.debug('[Stripe] Subscription details retrieved', { subscriptionId: subscription.id, userId: user.id });
 
         res.json({
             subscription: {
@@ -336,10 +334,11 @@ export const getSubscriptionDetails = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Get Subscription Details Error:', error);
+        logger.error('[Stripe] Get Subscription Details Error', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const resumeSubscription = async (req, res) => {
     try {
@@ -368,13 +367,15 @@ export const resumeSubscription = async (req, res) => {
             cancel_at_period_end: false
         });
 
+        logger.info('[Stripe] Subscription resumed', { subscriptionId: subscription.id, userId: user.id });
         res.json({ status: 'resumed', subscription: updatedSubscription });
 
     } catch (error) {
-        console.error('Resume Subscription Error:', error);
+        logger.error('[Stripe] Resume Subscription Error', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const createPortalSession = async (req, res) => {
     try {
@@ -392,12 +393,14 @@ export const createPortalSession = async (req, res) => {
             return_url: `${req.headers.origin}/#/plans`,
         });
 
+        logger.info('[Stripe] Customer Portal session created', { customerId: customer.id, userId: user.id });
         res.json({ url: session.url });
     } catch (error) {
-        console.error('Create Portal Session Error:', error);
+        logger.error('[Stripe] Create Portal Session Error', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const updateSubscription = async (req, res) => {
     try {
@@ -454,7 +457,6 @@ export const updateSubscription = async (req, res) => {
             invoiceUrl = invoice.hosted_invoice_url;
         }
 
-        const supabaseAdmin = getAdminClient();
         if (supabaseAdmin) {
             const modules = getPlanModules(planId);
             await supabaseAdmin
@@ -467,7 +469,7 @@ export const updateSubscription = async (req, res) => {
                 .eq('id', user.id);
         }
 
-        console.log(`[Stripe] Subscription ${subscription.id} updated to ${planId}`);
+        logger.info(`[Stripe] Subscription updated`, { subscriptionId: subscription.id, planId, userId: user.id });
         res.json({
             success: true,
             planId,
@@ -476,7 +478,7 @@ export const updateSubscription = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Update Subscription Error:', error);
+        logger.error('[Stripe] Operation failed', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'; // HMR trigger
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Layout from './components/Layout.tsx';
 import Sidebar from './components/Sidebar.tsx';
@@ -22,10 +22,14 @@ import ClientManager from './pages/ClientManager.tsx';
 import ClientProfile from './pages/ClientProfile.tsx';
 
 import { AdminUsers, AdminMembership, AdminLicenses } from './pages/Admin.tsx';
+import AdminLogs from './pages/AdminLogs.tsx';
 import Unauthorized from './pages/Unauthorized.tsx';
 import Plans from './pages/Plans.tsx';
 import Settings from './pages/Settings.tsx';
 import PlanGuard from './components/PlanGuard.tsx';
+import ErrorBoundary from './components/ErrorBoundary.tsx';
+import AuthCallback from './pages/AuthCallback.tsx';
+import OnboardingWizard from './components/OnboardingWizard.tsx';
 
 
 // Protected Route Component (Unchanged)
@@ -90,7 +94,8 @@ function AppContent() {
         }
     }, [location]);
 
-    const isPublicRoute = ['/login', '/register', '/unauthorized'].includes(location.pathname);
+    const isPublicRoute = ['/login', '/register', '/unauthorized', '/auth/callback'].includes(location.pathname);
+
 
     return (
         <div className="flex h-screen text-white overflow-hidden transition-colors duration-300">
@@ -103,6 +108,9 @@ function AppContent() {
                     <Header sidebarOpen={sidebarOpen} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
                 )}
 
+                {/* Onboarding wizard — self-manages visibility per first-login detection */}
+                {!isPublicRoute && <OnboardingWizard />}
+
                 <main className={`flex-1 overflow-x-hidden overflow-y-auto scroll-smooth ${!isPublicRoute ? 'p-4 md:p-6' : ''}`}>
                     <Routes>
                         <Route path="/" element={
@@ -112,26 +120,33 @@ function AppContent() {
                         } />
                         <Route path="/login" element={<Login />} />
                         <Route path="/register" element={<Register />} />
+                        <Route path="/auth/callback" element={<AuthCallback />} />
 
                         <Route path="/dashboard" element={<Navigate to="/" replace />} />
 
                         <Route path="/start-session" element={<Navigate to="/session-note" replace />} />
                         <Route path="/session-note" element={
-                            <PlanGuard requiredModule="note_generator">
-                                <SessionNote />
-                            </PlanGuard>
+                            <ErrorBoundary moduleName="Note Generator">
+                                <PlanGuard requiredModule="note_generator">
+                                    <SessionNote />
+                                </PlanGuard>
+                            </ErrorBoundary>
                         } />
 
                         <Route path="/rbt-generator" element={
-                            <PlanGuard requiredModule="rbt_generator">
-                                <RBTGenerator />
-                            </PlanGuard>
+                            <ErrorBoundary moduleName="Daily Data (RBT)">
+                                <PlanGuard requiredModule="rbt_generator">
+                                    <RBTGenerator />
+                                </PlanGuard>
+                            </ErrorBoundary>
                         } />
 
                         <Route path="/bcba-generator" element={
-                            <PlanGuard requiredModule="bcba_generator">
-                                <BCBAGenerator />
-                            </PlanGuard>
+                            <ErrorBoundary moduleName="Weekly Data (BCBA)">
+                                <PlanGuard requiredModule="bcba_generator">
+                                    <BCBAGenerator />
+                                </PlanGuard>
+                            </ErrorBoundary>
                         } />
 
                         <Route path="/caseload" element={
@@ -163,6 +178,11 @@ function AppContent() {
                         <Route path="/admin-licenses" element={
                             <ProtectedRoute adminOnly>
                                 <AdminLicenses />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/admin-logs" element={
+                            <ProtectedRoute adminOnly>
+                                <AdminLogs />
                             </ProtectedRoute>
                         } />
 

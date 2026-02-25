@@ -8,8 +8,11 @@ import {
     saveDailyRecord,
     saveWeeklyRecord,
     getClientHistory,
-    getClientById
+    getClientById,
+    ClientSchema
 } from './clients.controller.js';
+import { validateRequest } from '../../shared/middleware/validateRequest.js';
+
 
 const router = express.Router();
 
@@ -26,9 +29,10 @@ router.use(authenticate);
  *       - bearerAuth: []
  */
 router.get('/', getClients);
-router.post('/', createClient);
-router.put('/:id', updateClient);
+router.post('/', validateRequest(ClientSchema), createClient);
+router.put('/:id', validateRequest(ClientSchema), updateClient);
 router.delete('/:id', deleteClient);
+
 
 router.post('/daily', saveDailyRecord);
 router.post('/weekly', saveWeeklyRecord);

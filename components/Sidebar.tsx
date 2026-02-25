@@ -46,6 +46,12 @@ const MENU_ITEMS: MenuItem[] = [
         icon: 'admin_panel_settings',
         labelKey: 'admin',
         adminOnly: true
+    },
+    {
+        to: '/admin-logs',
+        icon: 'terminal',
+        labelKey: 'logs',
+        adminOnly: true
     }
 ];
 

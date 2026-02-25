@@ -1,6 +1,9 @@
 import jwt from 'jsonwebtoken';
+import { config } from '../../shared/config/index.js';
+import logger from '../../shared/lib/logger.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-very-secure-secret-change-me';
+const JWT_SECRET = config.jwtSecret;
+
 
 export const authenticate = (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -20,10 +23,15 @@ export const authenticate = (req, res, next) => {
         };
         next();
     } catch (error) {
-        console.error('[AuthMiddleware] Token verification failed:', error.message);
+        logger.warn('[Auth] Token verification failed', {
+            error: error.message,
+            ip: req.ip,
+            url: req.originalUrl
+        });
         return res.status(401).json({ error: 'Invalid or expired token' });
     }
 };
+
 
 export const checkRole = (roles) => {
     return (req, res, next) => {

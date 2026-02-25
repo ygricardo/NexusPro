@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useUser } from '../contexts/UserContext';
@@ -7,9 +7,10 @@ import { supabase } from '../lib/supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
-import * as XLSX from 'xlsx';
 import ClientSelector from '../components/ClientSelector';
 import { authApi } from '../lib/api';
+import { exportNotesToPDF } from '../lib/exportPDF';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface InputRow {
     id: number;
@@ -58,6 +59,7 @@ const RBTGenerator = () => {
     const [nextSessionPlan, setNextSessionPlan] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [clients, setClients] = useState<Client[]>([]);
+    const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [saving, setSaving] = useState(false);
     const [presets, setPresets] = useState<{ id: string; name: string; config: InputRow[] }[]>([]);
@@ -130,6 +132,7 @@ const RBTGenerator = () => {
                     if (parsed.inputs) setInputs(parsed.inputs);
                     if (parsed.results) setResults(parsed.results);
                     if (parsed.selectedClientId) setSelectedClientId(parsed.selectedClientId);
+                    if (parsed.activeHistoryId) setActiveHistoryId(parsed.activeHistoryId);
                 } else {
                     sessionStorage.removeItem('rbt_session_state');
                 }
@@ -147,10 +150,11 @@ const RBTGenerator = () => {
             userId: user.id,
             inputs,
             results,
-            selectedClientId
+            selectedClientId,
+            activeHistoryId
         };
         sessionStorage.setItem('rbt_session_state', JSON.stringify(stateToSave));
-    }, [inputs, results, selectedClientId, isLoaded, user]);
+    }, [inputs, results, selectedClientId, activeHistoryId, isLoaded, user]);
 
     // Clear Session on Logout
     useEffect(() => {
@@ -223,10 +227,19 @@ const RBTGenerator = () => {
                 output_data: results
             };
 
-            const response = await authApi.saveGenerationHistory(historyPayload);
+            let response;
+            if (activeHistoryId) {
+                response = await authApi.updateGenerationHistory(activeHistoryId, historyPayload);
+            } else {
+                response = await authApi.saveGenerationHistory(historyPayload);
+            }
+
             if (response.ok) {
-                await showAlert('Success', 'Saved successfully!', 'success');
-                setActiveTab('history');
+                await showAlert('Success', activeHistoryId ? 'History updated!' : 'Saved successfully!', 'success');
+                const json = await response.json();
+                if (!activeHistoryId && json.data) {
+                    setActiveHistoryId(json.data.id);
+                }
                 fetchHistory();
             } else {
                 await showAlert('Error', 'Failed to save.', 'danger');
@@ -236,6 +249,22 @@ const RBTGenerator = () => {
         } finally {
             setSaving(false);
         }
+    };
+
+    const getChartData = () => {
+        if (!results || results.length === 0) return [];
+        const maxDays = Math.max(...results.map(r => r.data.length));
+        const chartData = [];
+        for (let i = 0; i < maxDays; i++) {
+            const row: any = { name: `D${i + 1}` };
+            results.forEach((result, idx) => {
+                const rawName = String(result.name || '').trim();
+                const behaviorName = rawName === '' ? `Behavior ${idx + 1}` : rawName;
+                row[behaviorName] = result.data[i] !== undefined ? result.data[i] : null;
+            });
+            chartData.push(row);
+        }
+        return chartData;
     };
 
     const savePreset = async () => {
@@ -454,28 +483,33 @@ const RBTGenerator = () => {
         success('Table copied to clipboard!');
     };
 
-    const exportExcel = () => {
+    const exportExcel = async () => {
         if (results.length === 0) {
             showError('No data to export.');
             return;
         }
 
+        const ExcelJS = await import('exceljs');
+        const { saveAs } = await import('file-saver');
+
+        const workbook = new ExcelJS.default.Workbook();
+        const worksheet = workbook.addWorksheet('RBT_Data');
+
         const maxDays = Math.max(...results.map(r => r.data.length));
         const header = ["Behavior", ...Array.from({ length: maxDays }, (_, i) => `Day ${i + 1}`), "Total"];
+        worksheet.addRow(header);
 
-        const excelData = [header];
         results.forEach(row => {
-            excelData.push([
+            worksheet.addRow([
                 row.name || 'Unnamed',
                 ...row.data,
                 row.total
             ]);
         });
 
-        const ws = XLSX.utils.aoa_to_sheet(excelData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "RBT_Data");
-        XLSX.writeFile(wb, `RBT_Data_Export.xlsx`);
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, `RBT_Data_Export.xlsx`);
         success('Excel file exported!');
     };
 
@@ -489,7 +523,26 @@ const RBTGenerator = () => {
         if (isConfirmed) {
             setInputs([{ id: 1, name: '', total: 0, days: 5 }]);
             setResults([]);
+            setActiveHistoryId(null);
         }
+    };
+
+    const handleExportPDF = () => {
+        if (!results.length) { showError('No data to export. Generate data first.'); return; }
+        const clientLabel = clients.find(c => c.id === selectedClientId)
+            ? `${clients.find(c => c.id === selectedClientId)!.first_name} ${clients.find(c => c.id === selectedClientId)!.last_name}`
+            : 'Client';
+        const notesText = results.map(row => {
+            const days = row.data.map((v, i) => `Day ${i + 1}: ${v}`).join(' | ');
+            return `Behavior: ${row.name}\nTotal: ${row.total} | Days: ${row.days}\n${days}`;
+        }).join('\n\n');
+        exportNotesToPDF({
+            title: 'Daily Data Report',
+            clientTag: clientLabel,
+            generatorType: 'RBT Session Notes',
+            notes: notesText,
+        });
+        success('PDF exported!');
     };
 
     return (
@@ -497,7 +550,13 @@ const RBTGenerator = () => {
             <AnimatePresence mode="wait">
                 {/* ===== HEADER (BCBA-Matched) ===== */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full mb-6">
-                    <div>
+                    <div className="flex items-center gap-3">
+                        {urlClientId && (
+                            <Link to={`/clients/${urlClientId}`} className="flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors mr-2">
+                                <span className="material-symbols-outlined text-sm">arrow_back</span>
+                                Back
+                            </Link>
+                        )}
                         <h1 className="text-3xl font-bold text-neutral-900 dark:text-white flex items-center gap-3">
                             <span className="material-symbols-outlined text-secondary text-4xl">ssid_chart</span>
                             {t('rbtGenerator')}
@@ -510,6 +569,14 @@ const RBTGenerator = () => {
                         >
                             <span className="material-symbols-outlined text-sm">download</span>
                             Export Excel
+                        </button>
+                        <button
+                            onClick={handleExportPDF}
+                            disabled={!results.length}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-lg shadow-red-500/20 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <span className="material-symbols-outlined text-sm">picture_as_pdf</span>
+                            Export PDF
                         </button>
                         <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-lg">
                             {['generator', 'history'].map(tab => (
@@ -726,11 +793,39 @@ const RBTGenerator = () => {
                                         </div>
                                     </div>
 
+                                    {/* Chart Second (Moved Below Table) */}
+                                    <div className="h-[400px] bg-white dark:bg-surface-dark rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 shadow-sm">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={getChartData()}>
+                                                <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                                                <XAxis dataKey="name" />
+                                                <YAxis />
+                                                <Tooltip contentStyle={{ backgroundColor: '#171717', color: '#fff', borderRadius: '8px', border: '1px solid #404040' }} />
+                                                <Legend />
+                                                {results.map((result, i) => {
+                                                    const rawName = String(result.name || '').trim();
+                                                    const behaviorName = rawName === '' ? `Behavior ${i + 1}` : rawName;
+                                                    return (
+                                                        <Line
+                                                            key={`line-${i}-${behaviorName}`}
+                                                            type="monotone"
+                                                            dataKey={behaviorName}
+                                                            stroke={`hsl(${i * 45}, 70%, 50%)`}
+                                                            strokeWidth={3}
+                                                            dot={{ r: 4 }}
+                                                            connectNulls
+                                                        />
+                                                    );
+                                                })}
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+
                                     {/* Save History Button */}
                                     <div className="flex justify-end gap-3 p-4 bg-neutral-50 dark:bg-neutral-900 rounded-xl">
                                         <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-6 py-3 bg-neutral-800 text-white font-bold rounded-lg hover:bg-neutral-700 disabled:opacity-50">
                                             <span className="material-symbols-outlined">save</span>
-                                            {saving ? 'Saving...' : 'Save History'}
+                                            {saving ? 'Saving...' : (activeHistoryId ? 'Update' : 'Save')}
                                         </button>
                                     </div>
                                 </>
@@ -760,6 +855,7 @@ const RBTGenerator = () => {
                                                 onClick={() => {
                                                     if (h.output_data) setResults(h.output_data);
                                                     if (h.input_data) setInputs(h.input_data);
+                                                    setActiveHistoryId(h.id);
                                                     setActiveTab('generator');
                                                     showAlert('Success', 'Data loaded from history.', 'success');
                                                 }}

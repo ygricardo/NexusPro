@@ -11,6 +11,7 @@ interface UserContextType {
     hasModule: (moduleId: string) => boolean;
     signIn: (email: string, password: string) => Promise<{ error: any }>;
     signUp: (email: string, password: string, fullName: string, role?: string, plan?: string) => Promise<{ error: any }>;
+    signInWithGoogle: () => Promise<{ error: any }>;
     signOut: () => Promise<void>;
     refreshUser: () => Promise<void>;
 }
@@ -31,21 +32,23 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
                 try {
                     const response = await authApi.getProfile();
                     if (response.ok) {
-                        const { user: profileData } = await response.json();
-                        console.log('UserContext: Found valid session', profileData.id);
-
-                        setUser({
-                            id: profileData.sub || profileData.id,
-                            name: profileData.name || 'User',
-                            email: profileData.email,
-                            role: profileData.role,
-                            plan: normalizePlan(profileData.plan || 'no_plan'),
-                            status: 'Active',
-                            avatar: `https://ui-avatars.com/api/?name=${profileData.name || 'User'}`,
-                            access: profileData.access || profileData.permissions || [],
-                        });
-                    } else {
-                        localStorage.removeItem('nexus_token');
+                        const contentType = response.headers.get('content-type');
+                        if (contentType && contentType.includes('application/json')) {
+                            const { user: profileData } = await response.json();
+                            console.log('UserContext: Found valid session', profileData.id);
+                            setUser({
+                                id: profileData.sub || profileData.id,
+                                name: profileData.name || 'User',
+                                email: profileData.email,
+                                role: profileData.role,
+                                plan: normalizePlan(profileData.plan || 'no_plan'),
+                                status: 'Active',
+                                avatar: `https://ui-avatars.com/api/?name=${profileData.name || 'User'}`,
+                                access: profileData.access || profileData.permissions || [],
+                            });
+                        } else {
+                            localStorage.removeItem('nexus_token');
+                        }
                     }
                 } catch (error) {
                     console.error('UserContext: Session init failed', error);
@@ -115,9 +118,14 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         try {
             // Use API instead of direct DB access to ensure consistent permissions/role mapping
             const response = await authApi.getProfile();
-
             if (!response.ok) {
-                throw new Error('Failed to fetch profile from API');
+                throw new Error(`Profile API returned ${response.status}`);
+            }
+
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                throw new Error(`Invalid content type: ${contentType}. Body: ${text.substring(0, 100)}`);
             }
 
             const { user: profileData } = await response.json();
@@ -155,10 +163,19 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
         try {
             const response = await authApi.login({ email, password });
-            const data = await response.json();
+
+            const contentType = response.headers.get('content-type');
+            let data: any = {};
+
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                const text = await response.text();
+                data = { message: text || 'Empty response from server' };
+            }
 
             if (!response.ok) {
-                return { error: data };
+                return { error: { message: data.error || data.message || `Server error: ${response.status}` } };
             }
 
             localStorage.setItem('nexus_token', data.token);
@@ -194,6 +211,24 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
             return { error: null };
         } catch (err: any) {
             console.error('UserContext: Unexpected error during signUp', err);
+            return { error: err };
+        }
+    };
+
+    const signInWithGoogle = async (): Promise<{ error: any }> => {
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: `${window.location.origin}/#/auth/callback`,
+                    queryParams: {
+                        access_type: 'offline',
+                        prompt: 'consent',
+                    },
+                },
+            });
+            return { error };
+        } catch (err: any) {
             return { error: err };
         }
     };
@@ -288,7 +323,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <UserContext.Provider value={{ user, setUser, checkAccess, hasModule, loading, signIn, signUp, signOut, refreshUser }}>
+        <UserContext.Provider value={{ user, setUser, checkAccess, hasModule, loading, signIn, signUp, signInWithGoogle, signOut, refreshUser }}>
             {children}
         </UserContext.Provider>
     );

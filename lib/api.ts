@@ -18,9 +18,12 @@ export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
     });
 
     if (response.status === 401) {
-        // Token expired or invalid - could trigger logout here
-        // localStorage.removeItem('nexus_token');
-        // window.location.href = '/login';
+        // Token expired or invalid — clear session and redirect to login
+        localStorage.removeItem('nexus_token');
+        sessionStorage.removeItem('nexus_session');
+        // Use hash path for HashRouter compatibility
+        window.location.href = '/#/login';
+        return response;
     }
 
     return response;
@@ -49,6 +52,7 @@ export const authApi = {
     deleteUser: (userId: string) => apiFetch(`/admin/users/${userId}`, {
         method: 'DELETE'
     }),
+    getUsers: () => apiFetch('/admin/users'),
     verifySession: (sessionId: string) => apiFetch('/stripe/verify-session', {
         method: 'POST',
         body: JSON.stringify({ sessionId })
@@ -68,11 +72,15 @@ export const authApi = {
         body: JSON.stringify({ planId })
     }),
     // History API
-    saveGenerationHistory: (data: { module_type: string, input_data: any, output_data: any }) => apiFetch('/history', {
+    saveGenerationHistory: (data: any) => apiFetch('/history', {
         method: 'POST',
         body: JSON.stringify(data)
     }),
-    fetchGenerationHistory: (type: string) => apiFetch(`/history/${type}`),
+    updateGenerationHistory: (id: string, data: any) => apiFetch(`/history/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+    }),
+    getHistory: (type: 'RBT' | 'BCBA' | 'ALL') => apiFetch(`/history/${type}`),
     deleteGenerationHistory: (id: string) => apiFetch(`/history/${id}`, {
         method: 'DELETE'
     }),

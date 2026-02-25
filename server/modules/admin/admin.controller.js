@@ -1,29 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import { config } from '../../shared/config/index.js';
-
-// Initialize Supabase Admin Client — specialized client that bypasses RLS
-let supabaseAdmin;
-
-const getAdminClient = () => {
-    if (supabaseAdmin) return supabaseAdmin;
-
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-
-    if (!supabaseUrl || !serviceRoleKey) {
-        console.error('[Admin Controller] Missing Configuration: VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set.');
-        return null;
-    }
-
-    supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false
-        }
-    });
-
-    return supabaseAdmin;
-};
+import { supabaseAdmin } from '../../shared/lib/supabase.js';
+import logger from '../../shared/lib/logger.js';
 
 export const updateUserProfile = async (req, res) => {
     const { id } = req.params;
@@ -40,8 +16,7 @@ export const updateUserProfile = async (req, res) => {
         return res.status(400).json({ success: false, message: 'No valid fields to update.' });
     }
 
-    const adminClient = getAdminClient();
-    if (!adminClient) {
+    if (!supabaseAdmin) {
         return res.status(500).json({
             success: false,
             message: 'Server misconfiguration: Admin access not available.'
@@ -49,16 +24,16 @@ export const updateUserProfile = async (req, res) => {
     }
 
     try {
-        console.log(`[Admin API] Updating user ${id}:`, updates);
+        logger.info(`[Admin API] Updating user ${id}`, { updates, adminId: req.user?.id });
 
-        const { data, error } = await adminClient
+        const { data, error } = await supabaseAdmin
             .from('profiles')
             .update(updates)
             .eq('id', id)
             .select();
 
         if (error) {
-            console.error('[Admin API] Update failed:', error);
+            logger.error(`[Admin API] Update failed for ${id}`, { error: error.message });
             return res.status(400).json({ success: false, message: error.message });
         }
 
@@ -73,16 +48,15 @@ export const updateUserProfile = async (req, res) => {
         });
 
     } catch (err) {
-        console.error('[Admin API] Unexpected error:', err);
-        return res.status(500).json({ success: false, message: 'Internal Server Error' });
+        logger.error('[Admin API] Unexpected error', { error: err.message, adminId: req.user?.id });
+        res.status(500).json({ error: err.message });
     }
 };
 
 export const deleteUser = async (req, res) => {
     const { id } = req.params;
 
-    const adminClient = getAdminClient();
-    if (!adminClient) {
+    if (!supabaseAdmin) {
         return res.status(500).json({
             success: false,
             message: 'Server misconfiguration: Admin access not available.'
@@ -90,21 +64,23 @@ export const deleteUser = async (req, res) => {
     }
 
     try {
-        console.log(`[Admin API] Deleting user ${id}`);
+        logger.warn(`[Admin API] Deleting user ${id}`, { adminId: req.user?.id });
 
-        const { error: authError } = await adminClient.auth.admin.deleteUser(id);
+        // 1. Delete from Supabase Auth
+        const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
 
         if (authError) {
-            console.warn('[Admin API] Auth Delete Error (User might not exist in Auth or other issue):', authError.message);
+            logger.warn('[Admin API] Auth Delete Error (User might not exist in Auth or other issue)', { error: authError.message });
         }
 
-        const { error: profileError } = await adminClient
+        // 2. Delete from Profiles table
+        const { error: profileError } = await supabaseAdmin
             .from('profiles')
             .delete()
             .eq('id', id);
 
         if (profileError) {
-            console.error('[Admin API] Profile Delete Error:', profileError);
+            logger.error('[Admin API] Profile Delete Error', { error: profileError.message });
             return res.status(400).json({ success: false, message: `Profile delete failed: ${profileError.message}` });
         }
 
@@ -114,7 +90,65 @@ export const deleteUser = async (req, res) => {
         });
 
     } catch (err) {
-        console.error('[Admin API] Unexpected error in delete:', err);
-        return res.status(500).json({ success: false, message: 'Internal Server Error' });
+        logger.error('[Admin API] Unexpected error in delete', { error: err.message, adminId: req.user?.id });
+        res.status(500).json({ error: err.message });
+    }
+};
+
+export const getLogs = async (req, res) => {
+    const { level, limit = 50, page = 0 } = req.query;
+
+    if (!supabaseAdmin) {
+        return res.status(500).json({ success: false, message: 'Admin client unavailable' });
+    }
+
+    try {
+        let query = supabaseAdmin
+            .from('audit_logs')
+            .select('*', { count: 'exact' })
+            .order('timestamp', { ascending: false })
+            .range(page * limit, (page + 1) * limit - 1);
+
+        if (level) {
+            query = query.eq('level', level);
+        }
+
+        const { data, error, count } = await query;
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            data,
+            pagination: {
+                total: count,
+                page: parseInt(page),
+                limit: parseInt(limit)
+            }
+        });
+    } catch (error) {
+        logger.error('[Admin API] Error fetching logs', { error: error.message });
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getUsers = async (req, res) => {
+    if (!supabaseAdmin) {
+        return res.status(500).json({ success: false, message: 'Admin client unavailable' });
+    }
+
+    try {
+        logger.debug('[Admin API] Fetching all users', { adminId: req.user?.id });
+        const { data, error } = await supabaseAdmin
+            .from('profiles')
+            .select('*');
+
+        if (error) throw error;
+
+        logger.info(`[Admin API] Successfully fetched users`, { count: data?.length || 0, adminId: req.user?.id });
+        res.json({ success: true, data });
+    } catch (error) {
+        logger.error('[Admin API] Error fetching users', { error: error.message, adminId: req.user?.id });
+        res.status(500).json({ success: false, message: error.message });
     }
 };

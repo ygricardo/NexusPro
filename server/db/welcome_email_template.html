@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to NexusPro</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #070d1f;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+
+        .wrapper {
+            max-width: 580px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .card {
+            background: linear-gradient(135deg, #0e1a35 0%, #0a1228 100%);
+            border-radius: 20px;
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 36px 36px 28px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .logo-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #2563eb, #06b6d4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-name {
+            font-size: 22px;
+            font-weight: 900;
+            color: #ffffff;
+            letter-spacing: -0.5px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 100px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            margin-bottom: 12px;
+        }
+
+        .badge-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10b981;
+        }
+
+        .badge-text {
+            font-size: 11px;
+            font-weight: 700;
+            color: #10b981;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .body {
+            padding: 32px 36px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 900;
+            color: #ffffff;
+            margin: 0 0 8px;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            font-size: 15px;
+            color: rgba(147, 197, 253, 0.7);
+            margin: 0 0 28px;
+            line-height: 1.6;
+        }
+
+        .cta-btn {
+            display: block;
+            width: fit-content;
+            margin: 0 auto 32px;
+            padding: 16px 40px;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 800;
+            text-decoration: none;
+            border-radius: 14px;
+            letter-spacing: 0.2px;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            margin: 28px 0;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+
+        .feature {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .feature-icon {
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+
+        .feature-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 4px;
+        }
+
+        .feature-desc {
+            font-size: 12px;
+            color: rgba(147, 197, 253, 0.5);
+            line-height: 1.5;
+        }
+
+        .info-box {
+            background: rgba(37, 99, 235, 0.08);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+        }
+
+        .info-box p {
+            margin: 0;
+            font-size: 13px;
+            color: rgba(147, 197, 253, 0.8);
+            line-height: 1.6;
+        }
+
+        .footer {
+            padding: 20px 36px 28px;
+            text-align: center;
+        }
+
+        .footer p {
+            font-size: 12px;
+            color: rgba(147, 197, 253, 0.35);
+            margin: 4px 0;
+            line-height: 1.6;
+        }
+
+        .confirm-url {
+            display: block;
+            word-break: break-all;
+            font-size: 12px;
+            color: rgba(37, 99, 235, 0.7);
+            margin-top: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrapper">
+        <div class="card">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" />
+                        </svg>
+                    </div>
+                    <span class="logo-name">NexusPro</span>
+                </div>
+                <div class="badge">
+                    <div class="badge-dot"></div>
+                    <span class="badge-text">Welcome Aboard</span>
+                </div>
+            </div>
+
+            <!-- Body -->
+            <div class="body">
+                <h1>Your Clinical Journey<br />Starts Here ✦</h1>
+                <p class="subtitle">
+                    Welcome to NexusPro &mdash; the AI-powered clinical documentation platform built for ABA
+                    professionals.
+                    Click below to confirm your email and activate your account.
+                </p>
+
+                <a href="{{ .ConfirmationURL }}" class="cta-btn">
+                    ✓ &nbsp; Confirm Your Account
+                </a>
+
+                <hr class="divider" />
+
+                <div class="features">
+                    <div class="feature">
+                        <div class="feature-icon">📋</div>
+                        <div class="feature-title">Session Notes</div>
+                        <div class="feature-desc">AI-generated clinical notes from assessments in seconds.</div>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">📊</div>
+                        <div class="feature-title">Daily Data</div>
+                        <div class="feature-desc">Track behavior data with our RBT Daily Data generator.</div>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">📈</div>
+                        <div class="feature-title">Weekly Reports</div>
+                        <div class="feature-desc">BCBA-ready weekly analysis generated automatically.</div>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">👥</div>
+                        <div class="feature-title">Client Manager</div>
+                        <div class="feature-desc">Manage your caseload and access complete client history.</div>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <p>
+                        🔐 &nbsp; This confirmation link expires in <strong style="color:#93c5fd">24 hours</strong>.
+                        After confirming, log in and select a plan to unlock your clinical tools.
+                        Your Note Generator access is tied to your subscription tier.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <p>If you didn't create a NexusPro account, you can safely ignore this email.</p>
+                <p>If the button above doesn't work, copy and paste this link into your browser:</p>
+                <a href="{{ .ConfirmationURL }}" class="confirm-url">{{ .ConfirmationURL }}</a>
+                <p style="margin-top:16px;">&copy; 2026 NexusPro &mdash; Built for ABA Professionals</p>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

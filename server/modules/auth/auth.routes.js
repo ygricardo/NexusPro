@@ -1,6 +1,7 @@
 import express from 'express';
 import { login, register, getProfile } from './auth.controller.js';
 import { authenticate } from './auth.middleware.js';
+import { authLimiter } from '../../shared/middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -14,7 +15,7 @@ const router = express.Router();
  *       201:
  *         description: User created
  */
-router.post('/register', register);
+router.post('/register', authLimiter, register);
 
 /**
  * @openapi
@@ -26,7 +27,7 @@ router.post('/register', register);
  *       200:
  *         description: Login successful
  */
-router.post('/login', login);
+router.post('/login', authLimiter, login);
 
 /**
  * @openapi

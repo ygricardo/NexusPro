@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate, checkRole } from '../auth/auth.middleware.js';
-import { updateUserProfile, deleteUser } from './admin.controller.js';
+import { updateUserProfile, deleteUser, getLogs, getUsers } from './admin.controller.js';
 
 const router = express.Router();
 
@@ -17,7 +17,9 @@ router.use(checkRole(['admin']));
  *     security:
  *       - bearerAuth: []
  */
+router.get('/users', getUsers);
 router.put('/users/:id', updateUserProfile);
 router.delete('/users/:id', deleteUser);
+router.get('/logs', getLogs);
 
 export default router;

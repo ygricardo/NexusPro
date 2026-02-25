@@ -1,4 +1,5 @@
 import { supabase } from '../../shared/lib/supabase.js';
+import logger from '../../shared/lib/logger.js';
 
 export const createPreset = async (req, res) => {
     const { name, config } = req.body;
@@ -19,14 +20,17 @@ export const createPreset = async (req, res) => {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            logger.error('[Presets] Create failed', { error: error.message, userId });
+            throw error;
+        }
 
+        logger.info('[Presets] Preset created', { userId, presetId: data.id, name });
         return res.status(201).json({
             success: true,
             data: data
         });
     } catch (error) {
-        console.error('[Preset Controller] Create Error:', error);
         return res.status(500).json({ success: false, message: 'Failed to create preset.' });
     }
 };
@@ -48,9 +52,10 @@ export const getPresets = async (req, res) => {
             data: data
         });
     } catch (error) {
-        console.error('[Preset Controller] Get Error:', error);
+        logger.error('[Presets] getPresets error', { error: error.message, userId: req.user?.id });
         return res.status(500).json({ success: false, message: 'Failed to fetch presets.' });
     }
+
 };
 
 export const deletePreset = async (req, res) => {
@@ -64,14 +69,17 @@ export const deletePreset = async (req, res) => {
             .eq('id', id)
             .eq('user_id', userId);
 
-        if (error) throw error;
+        if (error) {
+            logger.error('[Presets] Delete failed', { error: error.message, userId, presetId: id });
+            throw error;
+        }
 
+        logger.info('[Presets] Preset deleted', { userId, presetId: id });
         return res.status(200).json({
             success: true,
             message: 'Preset deleted successfully.'
         });
     } catch (error) {
-        console.error('[Preset Controller] Delete Error:', error);
         return res.status(500).json({ success: false, message: 'Failed to delete preset.' });
     }
 };

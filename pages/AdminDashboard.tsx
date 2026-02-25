@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import { supabase } from '../lib/supabaseClient';
+import { authApi } from '../lib/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -21,72 +21,74 @@ const AdminDashboard = () => {
 
     const calculateStats = async () => {
         try {
-            // Fetch profiles for revenue, subs, and growth stats
-            const { data: profiles, error } = await supabase.from('profiles').select('plan, id, status, created_at');
+            // Fetch profiles via Admin API
+            const response = await authApi.getUsers();
+            const result = await response.json();
 
-            if (error) {
-                console.error('Supabase Error:', error);
-                throw error;
+            if (!result.success || !result.data) {
+                console.error('Error fetching admin data:', result.message);
+                setStats(s => ({ ...s, loading: false }));
+                return;
             }
 
-            if (profiles) {
-                let revenue = 0;
-                let subs = 0;
-                let licenses = 0; // Placeholder until license table is clearer, or use profiles count
+            const profiles = result.data;
+            let revenue = 0;
+            let subs = 0;
+            let licenses = 0;
 
-                profiles.forEach((p: any) => {
-                    const plan = p.plan?.toLowerCase();
-                    const status = p.status?.toLowerCase();
+            profiles.forEach((p: any) => {
+                const plan = p.plan?.toLowerCase();
+                const status = p.status?.toLowerCase();
 
-                    // Revenue Calculation
-                    if (plan === 'rbt_pro') {
-                        revenue += 19.99;
-                        subs++;
-                    } else if (plan === 'analyst_pro') {
-                        revenue += 44.99;
-                        subs++;
-                    }
-
-                    // License Calculation (Mock logic: 1 license per active user)
-                    if (status === 'active') {
-                        licenses++;
-                    }
-                });
-
-                // Process Growth Data
-                const growthMap = new Map<string, number>();
-                profiles.forEach((p: any) => {
-                    if (p.created_at) {
-                        const date = new Date(p.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }); // e.g: "Dec 24"
-                        growthMap.set(date, (growthMap.get(date) || 0) + 1);
-                    }
-                });
-
-                // Convert to array and sort
-                let cumulativeUsers = 0;
-                const sortedDates = Array.from(growthMap.keys()).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-
-                const growthData = sortedDates.map(date => {
-                    cumulativeUsers += growthMap.get(date) || 0;
-                    return { name: date, users: cumulativeUsers };
-                });
-
-                // If no dates (old users without created_at), just show flat line or 1 point
-                if (growthData.length === 0) {
-                    growthData.push({ name: 'Total', users: profiles.length });
+                // Revenue Calculation
+                if (plan === 'rbt_pro' || plan === 'basic') {
+                    revenue += 19.99;
+                    subs++;
+                } else if (plan === 'analyst_pro' || plan === 'advanced') {
+                    revenue += 44.99;
+                    subs++;
+                } else if (plan === 'elite') {
+                    revenue += 69.99;
+                    subs++;
                 }
 
-                setStats({
-                    revenue,
-                    activeSubs: subs,
-                    totalUsers: profiles.length,
-                    activeLicenses: licenses,
-                    loading: false,
-                    growthData
-                });
-            } else {
-                setStats(s => ({ ...s, loading: false }));
+                // License Calculation (Mock logic: 1 license per active user)
+                if (status === 'active') {
+                    licenses++;
+                }
+            });
+
+            // Process Growth Data
+            const growthMap = new Map<string, number>();
+            profiles.forEach((p: any) => {
+                if (p.created_at) {
+                    const date = new Date(p.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }); // e.g: "Dec 24"
+                    growthMap.set(date, (growthMap.get(date) || 0) + 1);
+                }
+            });
+
+            // Convert to array and sort
+            let cumulativeUsers = 0;
+            const sortedDates = Array.from(growthMap.keys()).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+            const growthData = sortedDates.map(date => {
+                cumulativeUsers += growthMap.get(date) || 0;
+                return { name: date, users: cumulativeUsers };
+            });
+
+            // If no dates (old users without created_at), just show flat line or 1 point
+            if (growthData.length === 0) {
+                growthData.push({ name: 'Total', users: profiles.length });
             }
+
+            setStats({
+                revenue,
+                activeSubs: subs,
+                totalUsers: profiles.length,
+                activeLicenses: licenses,
+                loading: false,
+                growthData
+            });
         } catch (error) {
             console.error('Error fetching admin stats:', error);
             setStats(s => ({ ...s, loading: false }));

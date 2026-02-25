@@ -1,5 +1,14 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { config } from '../../shared/config/index.js';
+import { z } from 'zod';
+import logger from '../../shared/lib/logger.js';
+
+// ─── Zod Schema ───────────────────────────────────────────────────────
+export const ClientSchema = z.object({
+    first_name: z.string().min(1, 'First name is required').max(100),
+    last_name: z.string().min(1, 'Last name is required').max(100),
+});
+
 
 // Initialize Supabase Admin client to bypass RLS issues with custom JWTs
 const getAdminSupabase = () => {
@@ -23,7 +32,7 @@ export const getClients = async (req, res) => {
         if (error) throw error;
         res.json(data);
     } catch (error) {
-        console.error('Error in getClients:', error);
+        logger.error('[Clients] Error in getClients', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
@@ -31,10 +40,10 @@ export const getClients = async (req, res) => {
 export const createClient = async (req, res) => {
     try {
         const supabase = getAdminSupabase();
+
         const { first_name, last_name } = req.body;
 
-        console.log('[createClient] Request body:', req.body);
-        console.log('[createClient] User ID:', req.user?.id);
+        logger.debug('[Clients] Creating client', { first_name, last_name, userId: req.user?.id });
 
         const { data, error } = await supabase
             .from('clients')
@@ -47,12 +56,12 @@ export const createClient = async (req, res) => {
             .single();
 
         if (error) {
-            console.error('[createClient] Supabase error:', error);
+            logger.error('[Clients] Create failed', { error: error.message, userId: req.user?.id });
             throw error;
         }
+        logger.info('[Clients] Client created successfully', { clientId: data.id, userId: req.user.id });
         res.status(201).json(data);
     } catch (error) {
-        console.error('Error in createClient:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -80,13 +89,18 @@ export const updateClient = async (req, res) => {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            logger.error('[Clients] Update failed', { error: error.message, clientId: id, userId: req.user.id });
+            throw error;
+        }
+        logger.info('[Clients] Client updated', { clientId: id, userId: req.user.id });
         res.json(data);
     } catch (error) {
-        console.error('Error in updateClient:', error);
+        logger.error('[Clients] updateClient error', { error: error.message, clientId: req.params?.id, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const deleteClient = async (req, res) => {
     try {
@@ -100,9 +114,10 @@ export const deleteClient = async (req, res) => {
             .eq('user_id', req.user.id); // Manual RLS
 
         if (error) throw error;
+        logger.info('[Clients] Client deleted', { clientId: id, userId: req.user.id });
         res.json({ message: 'Client deleted' });
     } catch (error) {
-        console.error('Error in deleteClient:', error);
+        logger.error('[Clients] Delete failed', { error: error.message, clientId: id });
         res.status(500).json({ error: error.message });
     }
 };
@@ -119,13 +134,18 @@ export const saveDailyRecord = async (req, res) => {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            logger.error('[Clients] saveDailyRecord failed', { error: error.message, clientId: client_id, userId: user_id });
+            throw error;
+        }
+        logger.info('[Clients] Daily record saved', { clientId: client_id, userId: user_id, recordId: data.id });
         res.status(201).json(data);
     } catch (error) {
-        console.error('Error in saveDailyRecord:', error);
+        logger.error('[Clients] saveDailyRecord error', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const saveWeeklyRecord = async (req, res) => {
     try {
@@ -139,13 +159,18 @@ export const saveWeeklyRecord = async (req, res) => {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            logger.error('[Clients] saveWeeklyRecord failed', { error: error.message, clientId: client_id, userId: user_id });
+            throw error;
+        }
+        logger.info('[Clients] Weekly record saved', { clientId: client_id, userId: user_id, recordId: data.id });
         res.status(201).json(data);
     } catch (error) {
-        console.error('Error in saveWeeklyRecord:', error);
+        logger.error('[Clients] saveWeeklyRecord error', { error: error.message, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const getClientById = async (req, res) => {
     try {
@@ -159,13 +184,17 @@ export const getClientById = async (req, res) => {
             .eq('user_id', req.user.id) // Manual RLS
             .single();
 
-        if (error) throw error;
+        if (error) {
+            logger.error('[Clients] getClientById failed', { error: error.message, clientId: id, userId: req.user.id });
+            throw error;
+        }
         res.json(data);
     } catch (error) {
-        console.error('Error in getClientById:', error);
+        logger.error('[Clients] getClientById error', { error: error.message, clientId: req.params?.id, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+
 
 export const getClientHistory = async (req, res) => {
     try {
@@ -183,33 +212,56 @@ export const getClientHistory = async (req, res) => {
 
         if (notesError) throw notesError;
 
-        // Fetch Daily Records
-        const { data: daily, error: dailyError } = await supabase
-            .from('daily_records')
+        // Fetch Generation History for Daily (RBT) and Weekly (BCBA)
+        const { data: genHistory, error: genError } = await supabase
+            .from('generation_history')
             .select('*')
             .eq('client_id', id)
             .eq('user_id', user_id)
             .order('created_at', { ascending: false });
 
-        if (dailyError) throw dailyError;
+        if (genError) throw genError;
 
-        // Fetch Weekly Records
-        const { data: weekly, error: weeklyError } = await supabase
-            .from('weekly_records')
-            .select('*')
-            .eq('client_id', id)
-            .eq('user_id', user_id)
-            .order('created_at', { ascending: false });
+        const daily = [];
+        const weekly = [];
 
-        if (weeklyError) throw weeklyError;
+        genHistory.forEach(hist => {
+            if (hist.module_type === 'RBT') {
+                if (Array.isArray(hist.output_data)) {
+                    daily.push({
+                        id: hist.id,
+                        created_at: hist.created_at,
+                        input_data: hist.input_data,
+                        output_data: hist.output_data,
+                        behaviors: hist.output_data.filter(item => item.name).map(item => ({
+                            name: item.name,
+                            total: item.total || 0,
+                            data: item.data || []
+                        }))
+                    });
+                }
+            } else if (hist.module_type === 'BCBA') {
+                if (hist.input_data) {
+                    weekly.push({
+                        id: hist.id,
+                        created_at: hist.created_at,
+                        input_data: hist.input_data,
+                        output_data: hist.output_data,
+                        maladaptives: hist.input_data.maladaptives?.filter(item => item.name) || [],
+                        replacements: hist.input_data.replacements?.filter(item => item.name) || []
+                    });
+                }
+            }
+        });
 
         res.json({
             notes: notes || [],
-            daily: daily || [],
-            weekly: weekly || []
+            daily: daily,
+            weekly: weekly
         });
     } catch (error) {
-        console.error('Error in getClientHistory:', error);
+        logger.error('[Clients] getClientHistory error', { error: error.message, clientId: req.params?.id, userId: req.user?.id });
         res.status(500).json({ error: error.message });
     }
 };
+

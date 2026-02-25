@@ -14,7 +14,7 @@ import {
     Bold, Italic, Underline, List, ListOrdered, Signature, Download, History,
     Save, AlertTriangle, Lock, Unlock, FileText, Activity, Clock,
     Trash2, Calendar, Search, ArrowLeft, ChevronRight, BrainCircuit,
-    Wand2, X
+    Wand2, X, Copy, Check
 } from 'lucide-react';
 
 // --- Components ---
@@ -58,6 +58,7 @@ const SessionNote = () => {
     const [clientName, setClientName] = useState(''); // Manual override
 
     const [narrative, setNarrative] = useState('');
+    const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
     const [historyNotes, setHistoryNotes] = useState<any[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
@@ -73,11 +74,19 @@ const SessionNote = () => {
     const editorRef = useRef<HTMLDivElement>(null);
     const [isVerified, setIsVerified] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isCopied, setIsCopied] = useState(false);
 
     // URL Params Logic
     const [searchParams] = useSearchParams();
     const urlClientId = searchParams.get('client_id');
     const [isClientLocked, setIsClientLocked] = useState(false);
+
+    // Ref that holds a pending note ID to auto-load after history fetch (from ClientProfile "Edit Note")
+    const pendingEditIdRef = useRef<string | null>(sessionStorage.getItem('session_note_edit_id'));
+    useEffect(() => {
+        // Remove from sessionStorage immediately — we own it in the ref now
+        if (pendingEditIdRef.current) sessionStorage.removeItem('session_note_edit_id');
+    }, []);
 
     // --- Effects ---
 
@@ -111,6 +120,16 @@ const SessionNote = () => {
         }
     }, [urlClientId, clients]);
 
+    // Auto-load note if navigated from ClientProfile's "Edit Note" button
+    // (no-op – handled inside fetchHistory via pendingEditIdRef)
+
+    // Reset active note when client changes
+    useEffect(() => {
+        setActiveNoteId(null);
+        setNarrative('');
+        if (editorRef.current) editorRef.current.innerText = '';
+    }, [selectedClientId]);
+
     const fetchHistory = async () => {
         if (!selectedClientId) return;
         setIsLoadingHistory(true);
@@ -118,10 +137,19 @@ const SessionNote = () => {
             const res = await authApi.getClientHistory(selectedClientId);
             if (res.ok) {
                 const data = await res.json();
-                // Ensure we handle the object response { notes, daily, weekly }
-                // and filter/sort the notes properly
                 const notes = Array.isArray(data.notes) ? data.notes : [];
                 setHistoryNotes(notes);
+
+                // Auto-load a note if we came from ClientProfile "Edit Note"
+                if (pendingEditIdRef.current) {
+                    const found = notes.find((n: any) => n.id === pendingEditIdRef.current);
+                    if (found) {
+                        setNarrative(found.content);
+                        setActiveNoteId(found.id);
+                        if (editorRef.current) editorRef.current.innerText = found.content;
+                    }
+                    pendingEditIdRef.current = null; // consumed
+                }
             }
         } catch (err) {
             console.error("Failed to fetch history", err);
@@ -156,9 +184,9 @@ const SessionNote = () => {
             setNarrative(content);
             if (editorRef.current) editorRef.current.innerText = content;
             success('Draft Generated');
-        } catch (err) {
-            console.error(err);
-            toastError('Generation Failed');
+        } catch (err: any) {
+            console.error('[SessionNote] Generation error:', err);
+            toastError(err?.message || 'Generation Failed');
         } finally {
             setIsGenerating(false);
         }
@@ -177,12 +205,26 @@ const SessionNote = () => {
                 is_verified: isSigned, // Mapping is_signed to is_verified for backend
                 quantitative_summary: null // Placeholder for future metrics
             };
-            const res = await authApi.saveNote(noteData);
+
+            let res;
+            if (activeNoteId) {
+                res = await authApi.updateNote(activeNoteId, noteData);
+            } else {
+                res = await authApi.saveNote(noteData);
+            }
+
             if (res.ok) {
-                success(isSigned ? 'Signed & Submitted' : 'Draft Saved');
+                success(isSigned ? 'Signed & Submitted' : (activeNoteId ? 'Draft Updated' : 'Draft Saved'));
                 fetchHistory(); // Refresh history
+
+                if (!activeNoteId) {
+                    const data = await res.json();
+                    if (data.note?.id) setActiveNoteId(data.note.id);
+                }
+
                 if (isSigned) {
                     setNarrative('');
+                    setActiveNoteId(null);
                     if (editorRef.current) editorRef.current.innerText = '';
                     setIsVerified(false);
                 }
@@ -197,6 +239,29 @@ const SessionNote = () => {
         }
     };
 
+    const handleDeleteFromHistory = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent loading the note when clicking delete
+
+        if (await confirm({ title: 'Delete Note?', message: 'Are you sure you want to permanently delete this note from history?' })) {
+            try {
+                const res = await authApi.deleteNote(id);
+                if (res.ok) {
+                    success('Note deleted');
+                    if (activeNoteId === id) {
+                        setNarrative('');
+                        setActiveNoteId(null);
+                        if (editorRef.current) editorRef.current.innerText = '';
+                    }
+                    fetchHistory();
+                } else {
+                    toastError('Fail to delete note');
+                }
+            } catch (err) {
+                toastError('Delete error');
+            }
+        }
+    };
+
     const handleFormat = (cmd: string) => {
         document.execCommand(cmd, false, undefined);
         editorRef.current?.focus();
@@ -204,6 +269,7 @@ const SessionNote = () => {
 
     const loadFromHistory = (note: any) => {
         setNarrative(note.content);
+        setActiveNoteId(note.id);
         if (editorRef.current) editorRef.current.innerText = note.content;
         setSelectedClientId(note.client_id);
         setShowHistory(false);
@@ -267,7 +333,7 @@ const SessionNote = () => {
                                                 <div
                                                     key={note.id}
                                                     onClick={() => loadFromHistory(note)}
-                                                    className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-indigo-500/30 hover:bg-white/10 transition-all cursor-pointer group"
+                                                    className={`p-4 rounded-2xl border transition-all cursor-pointer group relative ${activeNoteId === note.id ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-white/5 border-white/5 hover:border-indigo-500/30 hover:bg-white/10'}`}
                                                 >
                                                     <div className="flex justify-between items-start mb-2">
                                                         <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
@@ -277,12 +343,19 @@ const SessionNote = () => {
                                                             {new Date(note.created_at).toLocaleDateString()}
                                                         </span>
                                                     </div>
-                                                    <h3 className="text-sm font-bold text-white truncate group-hover:text-indigo-300 transition-colors">
+                                                    <h3 className="text-sm font-bold text-white truncate group-hover:text-indigo-300 transition-colors pr-8">
                                                         {note.case_tag || 'Untitled Note'}
                                                     </h3>
-                                                    <p className="text-xs text-neutral-400 line-clamp-2 mt-1">
+                                                    <p className="text-xs text-neutral-400 line-clamp-2 mt-1 pr-6">
                                                         {note.content}
                                                     </p>
+                                                    <button
+                                                        onClick={(e) => handleDeleteFromHistory(note.id, e)}
+                                                        className="absolute bottom-4 right-4 p-1.5 text-neutral-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                                        title="Delete note"
+                                                    >
+                                                        <Trash2 className="size-4" />
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>
@@ -320,6 +393,26 @@ const SessionNote = () => {
                                         </span>
                                     </div>
                                 </div>
+                                {/* Edit mode badge */}
+                                {activeNoteId && (
+                                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                                        <span className="text-[10px] font-black uppercase tracking-widest">Editing Draft</span>
+                                        <button
+                                            title="Discard edits — start a new note"
+                                            onClick={async () => {
+                                                const ok = await confirm({ title: 'Discard Edits?', message: 'This will clear the editor and start a new blank note. Your saved draft is not deleted.', confirmText: 'Discard', type: 'warning' });
+                                                if (ok) {
+                                                    setNarrative('');
+                                                    setActiveNoteId(null);
+                                                    if (editorRef.current) editorRef.current.innerText = '';
+                                                }
+                                            }}
+                                            className="size-4 flex items-center justify-center rounded-full hover:bg-amber-500/20 transition-colors"
+                                        >
+                                            <X className="size-3" />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-center md:justify-end">
@@ -447,6 +540,23 @@ const SessionNote = () => {
                             <button onClick={() => handleFormat('insertOrderedList')} className="p-2 hover:bg-white/10 rounded text-neutral-400 hover:text-white transition-colors" title="Numbers">
                                 <ListOrdered className="size-4" />
                             </button>
+                            <div className="w-px h-4 bg-white/10 mx-2" />
+                            {/* Copy Note */}
+                            <button
+                                onClick={async () => {
+                                    if (!narrative.trim()) return;
+                                    await navigator.clipboard.writeText(narrative);
+                                    setIsCopied(true);
+                                    setTimeout(() => setIsCopied(false), 2000);
+                                }}
+                                disabled={!narrative.trim()}
+                                className="flex items-center gap-1.5 px-3 py-1.5 ml-auto rounded-lg text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                style={isCopied ? { background: 'rgba(34,197,94,0.15)', color: '#4ade80' } : { background: 'rgba(255,255,255,0.05)', color: '#a3a3a3' }}
+                                title="Copy note to clipboard"
+                            >
+                                {isCopied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                                {isCopied ? 'Copied!' : 'Copy'}
+                            </button>
                         </div>
 
                         {/* Content */}
@@ -477,7 +587,7 @@ const SessionNote = () => {
                                 <div className="flex flex-col">
                                     <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-1">Status</span>
                                     <span className={`text-[11px] font-black uppercase tracking-widest ${narrative.length > 0 ? 'text-indigo-400' : 'text-neutral-600'}`}>
-                                        {narrative.length > 0 ? 'Document in Progress' : 'Empty Canvas'}
+                                        {narrative.length > 0 ? (activeNoteId ? 'Editing Draft' : 'Document in Progress') : 'Empty Canvas'}
                                     </span>
                                 </div>
                                 <div className="flex flex-col border-l border-white/5 pl-6">
@@ -488,14 +598,14 @@ const SessionNote = () => {
                                 </div>
                             </div>
 
-                            <div className="flex gap-4">
+                            <div className="flex gap-3 flex-wrap justify-center sm:justify-end">
                                 <button
-                                    onClick={() => handleSave(true)}
+                                    onClick={() => handleSave(false)}
                                     disabled={!narrative.trim() || isSaving}
                                     className={`flex items-center gap-3 px-10 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest text-white shadow-xl transition-all ${!narrative.trim() ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed border border-white/5' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20'}`}
                                 >
                                     <Save className="size-4" />
-                                    {isSaving ? 'Saving...' : 'Save Clinical Note'}
+                                    {isSaving ? 'Saving...' : (activeNoteId ? 'Update Note' : 'Save Note')}
                                 </button>
                             </div>
                         </div>

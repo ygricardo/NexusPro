@@ -44,7 +44,7 @@ const Header = ({ children, sidebarOpen, toggleSidebar }: HeaderProps) => {
                         id: c.id,
                         type: 'client',
                         label: `${c.first_name} ${c.last_name}`,
-                        link: '#' // Future: Link to client details
+                        link: `/clients/${c.id}`
                     })) || [];
 
                     setSearchResults(results);
@@ -176,7 +176,11 @@ const Header = ({ children, sidebarOpen, toggleSidebar }: HeaderProps) => {
                                             </div>
                                         ) : searchResults.length > 0 ? (
                                             searchResults.map((result) => (
-                                                <button key={result.id} className="flex items-center gap-3 w-full p-3 hover:bg-white/5 rounded-2xl text-left transition-all group border border-transparent hover:border-white/5">
+                                                <button
+                                                    key={result.id}
+                                                    onClick={() => { setIsSearchFocused(false); setSearchTerm(''); navigate(result.link); }}
+                                                    className="flex items-center gap-3 w-full p-3 hover:bg-white/5 rounded-2xl text-left transition-all group border border-transparent hover:border-white/5"
+                                                >
                                                     <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform shadow-[0_0_10px_rgba(59,130,246,0.2)]">
                                                         <span className="material-symbols-outlined text-[18px]">person</span>
                                                     </div>

@@ -25,3 +25,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets / Debug scripts — never commit
+server/test_key.js
+server/test_models.js
+server/debug_*.js
+server/scripts/apply_schema_draft.js
+scripts/check_user_plan.js
+scripts/migrate_*.js
+scripts/force_*.js
+scripts/fix_*.js
+scripts/test_*.mjs
+api_response.json
+test-admin.js

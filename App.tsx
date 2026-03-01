@@ -9,6 +9,8 @@ import { ToastProvider } from './contexts/ToastContext.tsx';
 import { ConfirmProvider } from './contexts/ConfirmContext.tsx';
 import { UserPlan } from './types.ts';
 import LoadingScreen from './components/LoadingScreen.tsx';
+import { supabase } from './lib/supabaseClient';
+import { authApi } from './lib/api';
 
 // Pages
 import DashboardSwitcher from './pages/DashboardSwitcher.tsx';
@@ -30,7 +32,9 @@ import PlanGuard from './components/PlanGuard.tsx';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
 import AuthCallback from './pages/AuthCallback.tsx';
 import OnboardingWizard from './components/OnboardingWizard.tsx';
-
+import HelpCenter from './pages/HelpCenter.tsx';
+import TermsOfService from './pages/TermsOfService.tsx';
+import PrivacyPolicy from './pages/PrivacyPolicy.tsx';
 
 // Protected Route Component (Unchanged)
 interface ProtectedRouteProps {
@@ -94,7 +98,7 @@ function AppContent() {
         }
     }, [location]);
 
-    const isPublicRoute = ['/login', '/register', '/unauthorized', '/auth/callback'].includes(location.pathname);
+    const isPublicRoute = ['/login', '/register', '/unauthorized', '/auth/callback', '/terms', '/privacy'].includes(location.pathname);
 
 
     return (
@@ -195,7 +199,15 @@ function AppContent() {
                             </ProtectedRoute>
                         } />
 
+                        <Route path="/help" element={
+                            <ProtectedRoute>
+                                <HelpCenter />
+                            </ProtectedRoute>
+                        } />
+
                         <Route path="/unauthorized" element={<Unauthorized />} />
+                        <Route path="/terms" element={<TermsOfService />} />
+                        <Route path="/privacy" element={<PrivacyPolicy />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </main>
@@ -205,6 +217,87 @@ function AppContent() {
 }
 
 function App() {
+    // Protect Supabase Auth from React HashRouter destroying the token immediately
+    const [routerReady, setRouterReady] = useState(false);
+    const [syncError, setSyncError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const checkHash = async () => {
+            const hash = window.location.hash;
+            if (hash && (hash.includes('access_token=') || hash.includes('provider_token='))) {
+                console.log('App: OAuth callback detected. Forcing sync before router mount...');
+
+                // Let Supabase parse the token from the URL
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+                if (sessionError || !session) {
+                    setSyncError(`Supabase error: ${sessionError?.message || 'No session found'}`);
+                    setTimeout(() => setRouterReady(true), 3000);
+                    return;
+                }
+
+                // Perform background sync with NexusPro backend
+                try {
+                    const response = await authApi.syncSession(session.access_token);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.token) {
+                            console.log('App: Successfully synced OAuth session to Nexus Token');
+                            localStorage.setItem('nexus_token', data.token);
+                            // Clear hash manually so HashRouter starts clean at /
+                            window.location.hash = '#/';
+                        } else {
+                            setSyncError('Backend returned ok, but no nexus_token found.');
+                        }
+                    } else {
+                        const text = await response.text();
+                        setSyncError(`Backend rejected token sync [${response.status}]: ${text}`);
+                    }
+                } catch (error: any) {
+                    setSyncError(`Network error during sync: ${error.message}`);
+                }
+
+                // Release the hold on the router
+                setRouterReady(true);
+            } else {
+                setRouterReady(true);
+            }
+        };
+
+        checkHash();
+    }, []);
+
+    if (!routerReady || syncError) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-midnight overflow-hidden">
+                <div className="flex flex-col items-center justify-center p-8 max-w-lg text-center z-10">
+                    {!syncError && (
+                        <>
+                            <span className="material-symbols-outlined animate-spin text-5xl text-primary mb-6 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]">progress_activity</span>
+                            <h2 className="text-2xl font-black tracking-tighter text-white mb-2">Securing connection...</h2>
+                            <p className="text-blue-200/60 font-medium">Synchronizing Google OAuth session with NexusPro keys.</p>
+                        </>
+                    )}
+                    {syncError && (
+                        <>
+                            <div className="size-16 rounded-2xl bg-danger/20 flex items-center justify-center mb-6">
+                                <span className="material-symbols-outlined text-danger text-3xl">error</span>
+                            </div>
+                            <h2 className="text-2xl font-black text-white mb-2">Authentication Error</h2>
+                            <p className="text-blue-200/60 mb-6">The system could not validate your Google sign-in.</p>
+                            <div className="bg-black/40 border border-white/10 rounded-xl p-4 w-full">
+                                <p className="text-danger/80 font-mono text-xs text-left whitespace-pre-wrap word-break-all break-all">{syncError}</p>
+                            </div>
+                            <button onClick={() => setRouterReady(true)} className="mt-8 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-colors font-bold text-sm">
+                                Continue to Login
+                            </button>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <Router>
             <LanguageProvider>

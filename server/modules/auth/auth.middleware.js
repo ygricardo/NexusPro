@@ -32,6 +32,38 @@ export const authenticate = (req, res, next) => {
     }
 };
 
+/**
+ * Validates a Supabase Access Token directly instead of our custom JWT.
+ * Used exclusively for the /sync endpoint after a Google OAuth flow.
+ */
+export const authenticateSupabase = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'No Supabase token provided' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    try {
+        // Dynamically import supabaseAdmin to avoid circular dependencies
+        const { supabaseAdmin } = await import('../../shared/lib/supabase.js');
+
+        const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+
+        if (error || !user) {
+            logger.warn('[Auth] authenticateSupabase verification failed', { error: error?.message });
+            return res.status(401).json({ error: 'Invalid or expired Supabase token' });
+        }
+
+        req.user = user;
+        next();
+    } catch (error) {
+        logger.error('[Auth] authenticateSupabase unexpected error', { error: error.message });
+        res.status(500).json({ error: 'Internal server error during Supabase authentication' });
+    }
+};
+
 
 export const checkRole = (roles) => {
     return (req, res, next) => {
@@ -62,6 +94,28 @@ export const checkPermission = (permission) => {
             next();
         } else {
             res.status(403).json({ error: 'Forbidden: Missing permission ' + permission });
+        }
+    };
+};
+
+export const checkPlan = (allowedPlans) => {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // admin bypasses plan restrictions
+        if (req.user.role === 'admin') {
+            return next();
+        }
+
+        const userPlan = req.user.plan || 'no_plan';
+        const plans = Array.isArray(allowedPlans) ? allowedPlans : [allowedPlans];
+
+        if (plans.includes(userPlan) || plans.includes('all')) {
+            next();
+        } else {
+            res.status(403).json({ error: 'Forbidden: Your subscription plan does not allow this action' });
         }
     };
 };

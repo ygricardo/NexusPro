@@ -37,12 +37,16 @@ app.use(helmet({
     contentSecurityPolicy: false, // Required for Swagger UI to load correctly
 }));
 // ─── CORS Configuration (Hardened) ─────────────────────────────────
-// Only allow requests from our own frontend origins.
-// In development → Vite dev server. In production → your deployed domain.
+// In production with Railway (single service), frontend and backend share
+// the same origin, so CORS is only needed for cross-origin tools (Stripe, etc.)
+// FRONTEND_URL must match the Railway-assigned domain or your custom domain.
+const isRailwayDomain = (origin: string) =>
+    origin?.endsWith('.railway.app');
+
 const allowedOrigins = config.nodeEnv === 'production'
     ? [
-        process.env.FRONTEND_URL || 'https://app.nexuspro.com', // ← change to real domain
-    ]
+        process.env.FRONTEND_URL, // e.g. https://nexuspro.railway.app or custom domain
+    ].filter(Boolean)
     : [
         'http://localhost:3000',
         'http://127.0.0.1:3000',
@@ -52,15 +56,16 @@ const allowedOrigins = config.nodeEnv === 'production'
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow server-to-server (no origin) or whitelisted origins
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            logger.warn(`[Security] CORS blocked request from origin: ${origin}`);
-            callback(new Error('Not allowed by CORS policy'));
+        // Allow server-to-server requests (no origin header) — required for Stripe webhooks
+        if (!origin) return callback(null, true);
+        // Allow whitelisted origins or any *.railway.app domain in production
+        if (allowedOrigins.includes(origin) || isRailwayDomain(origin)) {
+            return callback(null, true);
         }
+        logger.warn(`[Security] CORS blocked request from origin: ${origin}`);
+        callback(new Error('Not allowed by CORS policy'));
     },
-    credentials: true, // Allow Authorization headers
+    credentials: true,
 }));
 
 app.use(express.json({
@@ -75,7 +80,9 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(requestLogger);
 
 // ─── API Documentation ──────────────────────────────────────────────
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+if (config.nodeEnv !== 'production') {
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+}
 
 // ─── Global API Limiter ─────────────────────────────────────────────
 app.use('/api', globalLimiter);

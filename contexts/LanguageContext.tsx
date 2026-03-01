@@ -151,6 +151,26 @@ export const translations: Record<string, Record<Language, string>> = {
     'ai_draft_body': { en: 'Artificial intelligence can make mistakes. It is the responsibility of the clinician to review, edit, and verify the accuracy of this note before signing.', es: 'La inteligencia artificial puede cometer errores. Es responsabilidad del clínico revisar, editar y verificar la precisión de esta nota antes de firmar.' },
     'liability_cert': { en: 'I certify that I have reviewed the generated content for clinical accuracy and compliance.', es: 'Certifico que he revisado el contenido generado para asegurar su precisión clínica y cumplimiento.' },
     'liability_footer': { en: 'NexusPro AI is a clinical assistant tool, not a substitute for professional judgment.', es: 'NexusPro AI es una herramienta de asistencia clínica, no un sustituto del juicio profesional.' },
+
+    // Help Center
+    'help_center_title': { en: 'Help & Support', es: 'Ayuda y Soporte' },
+    'help_center_desc': { en: 'Find answers to common questions and learn how to make the most of NexusPro.', es: 'Encuentra respuestas a preguntas comunes y aprende a aprovechar al máximo NexusPro.' },
+    'faq_title': { en: 'Frequently Asked Questions', es: 'Preguntas Frecuentes' },
+    'need_more_help': { en: 'Need More Help?', es: '¿Necesitas Más Ayuda?' },
+    'support_desc': { en: 'Our support team is ready to assist you. Send us an email and we will get back to you as soon as possible.', es: 'Nuestro equipo de soporte está listo para ayudarte. Envíanos un correo electrónico y te responderemos lo antes posible.' },
+    'contact_support_btn': { en: 'Contact Support', es: 'Contactar a Soporte' },
+    'support_hours': { en: 'Response time: 24-48 hours', es: 'Tiempo de respuesta: 24-48 horas' },
+    'user_guide_title': { en: 'User Guide', es: 'Guía de Usuario' },
+    'user_guide_desc': { en: 'Download our comprehensive user guide for detailed instructions on using every feature in NexusPro.', es: 'Descarga nuestra guía de usuario completa para obtener instrucciones detalladas sobre el uso de cada función en NexusPro.' },
+    'download_pdf': { en: 'Download PDF', es: 'Descargar PDF' },
+
+    // FAQs (Can customize the actual content here)
+    'faq_1_q': { en: 'How do I generate a session note?', es: '¿Cómo genero una nota de sesión?' },
+    'faq_1_a': { en: 'Navigate to the "Session Note" page from the dashboard or sidebar. Upload your clinical data PDF, and click "Generate Note". The system will process the data and build a narrative draft automatically.', es: 'Navega a la página "Borrador de Nota" desde el tablero o la barra lateral. Sube tu PDF de datos clínicos y haz clic en "Generar Nota". El sistema procesará los datos y creará un borrador narrativo automáticamente.' },
+    'faq_2_q': { en: 'Is my data secure and HIPAA-compliant?', es: '¿Están seguros mis datos y cumplen con HIPAA?' },
+    'faq_2_a': { en: 'Yes. NexusPro is built from the ground up prioritizing data security and strict adherence to HIPAA regulations. Client data is encrypted and appropriately managed.', es: 'Sí. NexusPro está construido desde cero priorizando la seguridad de los datos y el estricto cumplimiento de las regulaciones de HIPAA. Los datos de los clientes están encriptados y se gestionan adecuadamente.' },
+    'faq_4_q': { en: 'What should I do if a generator produces incorrect numbers?', es: '¿Qué debo hacer si un generador produce números incorrectos?' },
+    'faq_4_a': { en: 'The generators are tools meant to assist your workflow, but clinical judgement is always required. If numbers appear incorrect, manually adjust them or reach out to support for technical assistance regarding the algorithm logic.', es: 'Los generadores son herramientas destinadas a asistir en tu flujo de trabajo, pero siempre se requiere criterio clínico. Si los números parecen incorrectos, ajústalos manualmente o contacta a soporte para asistencia técnica sobre la lógica del algoritmo.' },
 };
 
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {

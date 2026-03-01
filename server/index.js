@@ -8,9 +8,11 @@ import logger from './shared/lib/logger.js';
 const REQUIRED_ENV_VARS = [
     'GEMINI_API_KEY',
     'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
     'SUPABASE_SERVICE_ROLE_KEY',
     'JWT_SECRET',
     'VITE_SUPABASE_URL',
+    'FRONTEND_URL',
 ];
 const missingVars = REQUIRED_ENV_VARS.filter(key => !process.env[key]);
 if (missingVars.length > 0) {

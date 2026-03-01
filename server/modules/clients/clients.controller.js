@@ -9,6 +9,21 @@ export const ClientSchema = z.object({
     last_name: z.string().min(1, 'Last name is required').max(100),
 });
 
+export const DailyRecordSchema = z.object({
+    client_id: z.string().uuid(),
+    behavior_name: z.string().min(1, 'Behavior name is required'),
+    data_json: z.any(),
+    total: z.number().int().min(0, 'Total must be non-negative'),
+});
+
+export const WeeklyRecordSchema = z.object({
+    client_id: z.string().uuid(),
+    behavior_name: z.string().min(1, 'Behavior name is required'),
+    data_json: z.any(),
+    baseline: z.number().int().min(0, 'Baseline must be non-negative').nullable().optional(),
+    trend: z.string().nullable().optional(),
+});
+
 
 // Initialize Supabase Admin client to bypass RLS issues with custom JWTs
 const getAdminSupabase = () => {

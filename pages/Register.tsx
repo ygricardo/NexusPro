@@ -199,11 +199,21 @@ const Register = () => {
                     </form>
 
                     {/* Footer */}
-                    <div className="mt-8 text-center">
+                    <div className="mt-8 text-center space-y-3">
                         <p className="text-sm text-blue-200/40 font-medium">
                             Already have an account?{' '}
                             <Link to="/login" className="text-secondary hover:text-yellow-300 font-bold transition-colors">
                                 Sign in
+                            </Link>
+                        </p>
+                        <p className="text-xs text-blue-200/25">
+                            By creating an account, you agree to our{' '}
+                            <Link to="/terms" className="text-blue-200/50 hover:text-white transition-colors underline underline-offset-2">
+                                Terms of Service
+                            </Link>
+                            {' '}and{' '}
+                            <Link to="/privacy" className="text-blue-200/50 hover:text-white transition-colors underline underline-offset-2">
+                                Privacy Policy
                             </Link>
                         </p>
                     </div>

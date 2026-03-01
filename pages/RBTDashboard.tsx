@@ -75,24 +75,32 @@ const QuickActionCard = ({ title, desc, icon, to, colorClass, delay }: any) => (
     </motion.div>
 );
 
-const StatCard = ({ title, value, subtext, icon, colorClass, trend }: any) => (
+const StatCard = ({ title, value, icon, colorClass, trend, onClick, locked }: any) => (
     <motion.div
         variants={itemVars}
-        className="relative overflow-hidden bg-white dark:bg-neutral-900/50 backdrop-blur-xl rounded-[2rem] p-6 border border-neutral-100 dark:border-neutral-800/60 shadow-sm hover:shadow-lg transition-all"
+        onClick={onClick}
+        className={`relative overflow-hidden bg-white dark:bg-neutral-900/50 backdrop-blur-xl rounded-[2rem] p-6 border border-neutral-100 dark:border-neutral-800/60 shadow-sm hover:shadow-lg transition-all ${onClick ? 'cursor-pointer hover:border-primary/30' : ''}`}
     >
         <div className="flex justify-between items-start mb-4">
             <div className={`size-10 rounded-xl flex items-center justify-center ${colorClass.replace('text-', 'bg-').replace('500', '500/10')}`}>
-                <span className={`material-symbols-outlined text-xl ${colorClass}`}>{icon}</span>
+                <span className={`material-symbols-outlined text-xl ${locked ? 'text-neutral-400' : colorClass}`}>
+                    {locked ? 'lock' : icon}
+                </span>
             </div>
-            {trend && (
+            {locked ? (
+                <span className="flex items-center gap-1 text-[10px] font-bold bg-neutral-500/10 text-neutral-400 px-2 py-1 rounded-full border border-neutral-500/20">
+                    Upgrade
+                </span>
+            ) : trend && (
                 <span className="flex items-center gap-1 text-[10px] font-bold bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded-full border border-emerald-500/20">
                     <span className="material-symbols-outlined text-xs">trending_up</span> {trend}
                 </span>
             )}
         </div>
-
         <div className="flex flex-col">
-            <span className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight leading-none mb-1">{value}</span>
+            <span className={`text-3xl font-black tracking-tight leading-none mb-1 ${locked ? 'text-neutral-400 blur-sm select-none' : 'text-neutral-900 dark:text-white'}`}>
+                {locked ? '—' : value}
+            </span>
             <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">{title}</span>
         </div>
     </motion.div>
@@ -141,15 +149,24 @@ const RBTDashboard = () => {
     const fetchDashboardData = async () => {
         setLoading(true);
         try {
-            // Parallel fetch for speed
-            const [clientsRes, historyRes, notesRes] = await Promise.all([
-                authApi.getClients(),
-                authApi.fetchGenerationHistory('ALL'),
+            // Fetch clients independently for immediate rendering
+            authApi.getClients().then(async (res) => {
+                if (res.ok) {
+                    const clientList = await res.json();
+                    setClients(clientList);
+                    setStats(prev => ({
+                        ...prev,
+                        activeClients: clientList.filter((c: any) => c.status === 'Active').length
+                    }));
+                }
+            }).catch(e => console.error('Error fetching clients:', e));
+
+            // Parallel fetch for heavier history/notes data
+            const [historyRes, notesRes] = await Promise.all([
+                authApi.getHistory('ALL'),
                 authApi.getNotesByUser()
             ]);
 
-            let clientList = [];
-            if (clientsRes.ok) clientList = await clientsRes.json();
 
             let historyList = [];
             if (historyRes.ok) {
@@ -184,14 +201,13 @@ const RBTDashboard = () => {
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 .slice(0, 10);
 
-            setClients(clientList);
             setActivities(mergedActivities);
-            setStats({
+            setStats(prev => ({
+                ...prev,
                 rbtCount: historyList.filter((h: any) => h.module_type === 'RBT').length,
                 bcbaCount: historyList.filter((h: any) => h.module_type === 'BCBA').length,
-                totalNotes: notesList.length,
-                activeClients: clientList.filter((c: any) => c.status === 'Active').length
-            });
+                totalNotes: notesList.length
+            }));
 
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
@@ -245,26 +261,42 @@ const RBTDashboard = () => {
                         value={stats.activeClients}
                         icon="groups"
                         colorClass="text-emerald-500"
-                        trend={stats.activeClients > 0 ? "+1 this week" : null}
+                        trend={stats.activeClients > 0 ? `${stats.activeClients} active` : null}
+                        onClick={() => navigate('/clients')}
                     />
                     <StatCard
-                        title={t('rbtGenerator')}
+                        title="Daily Data"
                         value={stats.rbtCount}
                         icon="query_stats"
                         colorClass="text-blue-500"
-                        trend={stats.rbtCount > 0 ? "+3 this week" : null}
+                        trend={stats.rbtCount > 0 ? `${stats.rbtCount} records` : null}
+                        locked={!checkAccess([], false, 'rbt_generator')}
+                        onClick={() => {
+                            if (!checkAccess([], false, 'rbt_generator')) { setIsUpgradeModalOpen(true); }
+                            else navigate('/caseload?tab=daily');
+                        }}
                     />
                     <StatCard
-                        title={t('bcbaGenerator')}
+                        title="Weekly Data"
                         value={stats.bcbaCount}
                         icon="analytics"
                         colorClass="text-purple-500"
+                        locked={!checkAccess([], false, 'bcba_generator')}
+                        onClick={() => {
+                            if (!checkAccess([], false, 'bcba_generator')) { setIsUpgradeModalOpen(true); }
+                            else navigate('/caseload?tab=weekly');
+                        }}
                     />
                     <StatCard
-                        title="Total Clinical Notes"
+                        title="Session Notes"
                         value={stats.totalNotes}
                         icon="description"
                         colorClass="text-amber-500"
+                        locked={!checkAccess([], false, 'note_generator')}
+                        onClick={() => {
+                            if (!checkAccess([], false, 'note_generator')) { setIsUpgradeModalOpen(true); }
+                            else navigate('/caseload?tab=notes');
+                        }}
                     />
                 </div>
 
@@ -284,7 +316,7 @@ const RBTDashboard = () => {
                     <div className="xl:col-span-2 space-y-4">
                         <div className="flex items-center justify-between px-1">
                             <h3 className="text-lg font-black text-neutral-900 dark:text-white">Active Clients</h3>
-                            <Link to="/clients" className="text-xs font-bold text-primary hover:underline">View Directory</Link>
+                            <Link to="/caseload" className="text-xs font-bold text-primary hover:underline">View Directory</Link>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -300,7 +332,7 @@ const RBTDashboard = () => {
                                             variants={itemVars}
                                             whileHover={{ scale: 1.01, x: 5 }}
                                             className="group flex p-4 bg-white dark:bg-neutral-900/60 border border-neutral-100 dark:border-neutral-800 rounded-[1.5rem] hover:border-primary/20 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer"
-                                            onClick={() => navigate(`/clients`)}
+                                            onClick={() => navigate(`/clients/${client.id}`)}
                                         >
                                             <div className="size-12 rounded-xl bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center text-sm font-black text-primary mr-3 shadow-inner">
                                                 {client.first_name[0]}{client.last_name[0]}
@@ -326,9 +358,12 @@ const RBTDashboard = () => {
                                         </div>
                                         <h4 className="font-bold text-neutral-900 dark:text-white mb-1">Your clinical caseload is empty</h4>
                                         <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-xs mx-auto mb-6">Start by adding your first client profile to begin tracking data.</p>
-                                        <Link to="/clients" className="bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 transition-transform hover:scale-105 active:scale-95">
+                                        <button
+                                            onClick={() => setIsClientModalOpen(true)}
+                                            className="bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 transition-transform hover:scale-105 active:scale-95"
+                                        >
                                             Add New Client
-                                        </Link>
+                                        </button>
                                     </div>
                                 )}
                             </AnimatePresence>

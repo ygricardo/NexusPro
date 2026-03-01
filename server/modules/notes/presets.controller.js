@@ -1,5 +1,12 @@
 import { supabase } from '../../shared/lib/supabase.js';
 import logger from '../../shared/lib/logger.js';
+import { z } from 'zod';
+
+export const PresetSchema = z.object({
+    name: z.string().min(1, 'Name is required'),
+    config: z.any(),
+});
+
 
 export const createPreset = async (req, res) => {
     const { name, config } = req.body;

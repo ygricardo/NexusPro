@@ -1,32 +1,69 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import { authApi } from '../lib/api';
 import { motion } from 'framer-motion';
 
 /**
  * AuthCallback handles the redirect from Google OAuth.
  * Supabase sets the session from the URL hash automatically.
- * We simply wait for the session to initialize, then redirect to dashboard.
+ * We must then sync that session with our backend to obtain a `nexus_token`
+ * before redirecting to the dashboard.
  */
 const AuthCallback = () => {
     const navigate = useNavigate();
+    const [status, setStatus] = useState('Waiting for Supabase session...');
 
     useEffect(() => {
-        // onAuthStateChange in UserContext will handle profile loading.
-        // We just poll for session completion and redirect.
+        const syncWithBackend = async (session: any) => {
+            try {
+                setStatus('Syncing session with backend...');
+                console.log('AuthCallback: Syncing session with backend...');
+                const response = await authApi.syncSession(session.access_token);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.token) {
+                        setStatus('Success! Redirecting...');
+                        console.log('AuthCallback: Session synced successfully.');
+                        localStorage.setItem('nexus_token', data.token);
+                        // Redirect to dashboard. UserContext will detect the token and load profile.
+                        navigate('/', { replace: true });
+                    } else {
+                        throw new Error('No token received from sync');
+                    }
+                } else {
+                    const errText = await response.text();
+                    throw new Error(`Sync failed with status: ${response.status}. ${errText}`);
+                }
+            } catch (error: any) {
+                setStatus(`Error: ${error.message}. Redirecting to login...`);
+                console.error('AuthCallback: Error syncing session:', error);
+                // If sync fails, we can't let them in properly. Send back to login.
+                await supabase.auth.signOut();
+                localStorage.removeItem('nexus_token');
+                setTimeout(() => navigate('/login', { replace: true }), 3000);
+            }
+        };
+
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            setStatus(`Auth event: ${event}`);
             if (event === 'SIGNED_IN' && session) {
-                // Small delay to allow UserContext to set user state
-                setTimeout(() => navigate('/', { replace: true }), 500);
+                syncWithBackend(session);
             } else if (event === 'SIGNED_OUT') {
                 navigate('/login', { replace: true });
             }
         });
 
         // Fallback: if already signed in (session was set before this mounted)
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session) {
-                setTimeout(() => navigate('/', { replace: true }), 500);
+        supabase.auth.getSession().then(({ data: { session }, error }) => {
+            if (error) {
+                setStatus(`GetSession error: ${error.message}`);
+            } else if (session) {
+                setStatus('Session found during mount. Syncing...');
+                syncWithBackend(session);
+            } else {
+                setStatus('No session found yet. Waiting for Auth Event...');
             }
         });
 
@@ -56,6 +93,9 @@ const AuthCallback = () => {
                     </motion.span>
                     <p className="text-white/60 font-medium text-sm tracking-wide">
                         Authenticating with Google…
+                    </p>
+                    <p className="text-blue-400 font-mono text-xs mt-4 p-2 bg-black/20 rounded">
+                        Debug Status: {status}
                     </p>
                 </div>
             </div>

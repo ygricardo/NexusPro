@@ -5,10 +5,10 @@ import logger from '../../shared/lib/logger.js';
 // ─── Zod Schema ───────────────────────────────────────────────────────
 // Validates incoming history entries from the RBT and BCBA generators
 export const HistoryEntrySchema = z.object({
-    module_type: z.enum(['RBT', 'BCBA'], { message: 'module_type must be "RBT" or "BCBA"' }),
-    input_data: z.record(z.any()).or(z.array(z.any())).refine(v => v !== null, 'input_data is required'),
-    output_data: z.record(z.any()).or(z.array(z.any())).refine(v => v !== null, 'output_data is required'),
-    client_id: z.string().uuid('client_id must be a valid UUID').nullable().optional(),
+    module_type: z.enum(['RBT', 'BCBA']),
+    input_data: z.any(),
+    output_data: z.any(),
+    client_id: z.string().uuid().nullable().optional(),
 });
 
 

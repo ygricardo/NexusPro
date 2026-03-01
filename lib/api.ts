@@ -41,6 +41,14 @@ export const authApi = {
     getProfile: () => apiFetch('/auth/profile', {
         headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
     }),
+    // Special function to sync Supabase OAuth with our custom JWT backend
+    syncSession: (supabaseAccessToken: string) => fetch(`${API_URL}/auth/sync`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAccessToken}`
+        }
+    }),
     createCheckoutSession: (planId: string, interval: 'month' | 'year') => apiFetch('/stripe/create-checkout-session', {
         method: 'POST',
         body: JSON.stringify({ planId, interval }),
@@ -63,12 +71,12 @@ export const authApi = {
     resumeSubscription: () => apiFetch('/stripe/resume-subscription', {
         method: 'POST'
     }),
-    getSubscriptionDetails: () => apiFetch('/stripe/subscription-details'),
+    getSubscriptionDetails: () => apiFetch('/stripe/subscription'),
     createPortalSession: () => apiFetch('/stripe/create-portal-session', {
         method: 'POST'
     }),
     updateSubscription: (planId: string) => apiFetch('/stripe/update-subscription', {
-        method: 'PUT',
+        method: 'POST',
         body: JSON.stringify({ planId })
     }),
     // History API
@@ -86,6 +94,10 @@ export const authApi = {
     }),
     saveNote: (data: any) => apiFetch('/notes', {
         method: 'POST',
+        body: JSON.stringify(data)
+    }),
+    updateNote: (id: string, data: any) => apiFetch(`/notes/${id}`, {
+        method: 'PUT',
         body: JSON.stringify(data)
     }),
     getNotesByUser: () => apiFetch('/notes'),

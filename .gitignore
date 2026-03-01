@@ -18,7 +18,6 @@ dist-ssr
 .idea
 
 # System
-.env
 .DS_Store
 *.suo
 *.ntvs*
@@ -26,11 +25,19 @@ dist-ssr
 *.sln
 *.sw?
 
-# Secrets / Debug scripts — never commit
+# --- Environment & Secrets --- NEVER COMMIT ---
+.env
+.env.*
+.env.local
+.env.production
+.env.staging
+
+# --- Debug & Admin scripts --- NEVER COMMIT ---
 server/test_key.js
 server/test_models.js
 server/debug_*.js
 server/scripts/apply_schema_draft.js
+server/scripts/restore-admin.js
 scripts/check_user_plan.js
 scripts/migrate_*.js
 scripts/force_*.js
@@ -38,3 +45,13 @@ scripts/fix_*.js
 scripts/test_*.mjs
 api_response.json
 test-admin.js
+admin_auth_users.json
+admin_profiles.json
+admin_profiles.txt
+
+# --- Legacy / Standalone tools ---
+rbt_tool_v26.html
+*.html.bak
+
+# --- Temporary build output ---
+*.tsbuildinfo

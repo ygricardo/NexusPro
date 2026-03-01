@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticate } from '../auth/auth.middleware.js';
 import { saveNote, updateNote, getNotesByUser, getNotesByClient, deleteNote, NoteSchema } from './notes.controller.js';
 import { validateRequest } from '../../shared/middleware/validateRequest.js';
-import { createPreset, getPresets, deletePreset } from './presets.controller.js';
+import { createPreset, getPresets, deletePreset, PresetSchema } from './presets.controller.js';
 import { saveEntry, updateEntry, getHistory, deleteEntry, HistoryEntrySchema } from './history.controller.js';
 
 
@@ -40,7 +40,7 @@ router.delete('/notes/:id', deleteNote);
  *       - bearerAuth: []
  */
 router.get('/presets', getPresets);
-router.post('/presets', createPreset);
+router.post('/presets', validateRequest(PresetSchema), createPreset);
 router.delete('/presets/:id', deletePreset);
 
 // === History sub-routes ===

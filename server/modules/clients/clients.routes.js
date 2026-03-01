@@ -9,7 +9,9 @@ import {
     saveWeeklyRecord,
     getClientHistory,
     getClientById,
-    ClientSchema
+    ClientSchema,
+    DailyRecordSchema,
+    WeeklyRecordSchema
 } from './clients.controller.js';
 import { validateRequest } from '../../shared/middleware/validateRequest.js';
 
@@ -34,8 +36,8 @@ router.put('/:id', validateRequest(ClientSchema), updateClient);
 router.delete('/:id', deleteClient);
 
 
-router.post('/daily', saveDailyRecord);
-router.post('/weekly', saveWeeklyRecord);
+router.post('/daily', validateRequest(DailyRecordSchema), saveDailyRecord);
+router.post('/weekly', validateRequest(WeeklyRecordSchema), saveWeeklyRecord);
 router.get('/:id/history', getClientHistory);
 router.get('/:id', getClientById);
 

@@ -5,6 +5,11 @@ export const validateRequest = (schema) => (req, res, next) => {
         req.body = schema.parse(req.body);
         next();
     } catch (error) {
+        // If it's not a ZodError (no .errors array), let Express handle it
+        if (!error.errors || !Array.isArray(error.errors)) {
+            logger.error('Unexpected validation error (non-ZodError)', { message: error.message, path: req.path });
+            return next(error);
+        }
         logger.warn('Validation Error', {
             path: req.path,
             errors: error.errors,
@@ -14,7 +19,7 @@ export const validateRequest = (schema) => (req, res, next) => {
             success: false,
             message: 'Validation failed',
             errors: error.errors.map(e => ({
-                path: e.path.join('.'),
+                path: (e.path || []).join('.'),
                 message: e.message
             }))
         });

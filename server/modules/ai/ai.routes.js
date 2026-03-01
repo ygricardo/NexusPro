@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { authenticate } from '../auth/auth.middleware.js';
+import { authenticate, checkPlan } from '../auth/auth.middleware.js';
 import { validate } from '../../shared/middleware/validate.js';
 import { generateNotes } from './ai.controller.js';
 import { aiLimiter } from '../../shared/middleware/rateLimiter.js';
@@ -28,6 +28,6 @@ const generateNotesSchema = z.object({
  *     security:
  *       - bearerAuth: []
  */
-router.post('/generate-notes', authenticate, aiLimiter, validate(generateNotesSchema), generateNotes);
+router.post('/generate-notes', authenticate, checkPlan(['elite', 'advanced']), aiLimiter, validate(generateNotesSchema), generateNotes);
 
 export default router;

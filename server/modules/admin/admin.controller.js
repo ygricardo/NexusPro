@@ -24,6 +24,14 @@ export const updateUserProfile = async (req, res) => {
     }
 
     try {
+        // Core system protection check
+        const { data: userAuth } = await supabaseAdmin.auth.admin.getUserById(id);
+        const isCoreAdmin = userAuth?.user?.email === 'admin@nexuspro.com';
+
+        if (isCoreAdmin && role === 'user') {
+            return res.status(403).json({ success: false, message: 'Safety check: Cannot demote the primary system administrator.' });
+        }
+
         logger.info(`[Admin API] Updating user ${id}`, { updates, adminId: req.user?.id });
 
         const { data, error } = await supabaseAdmin
@@ -64,6 +72,11 @@ export const deleteUser = async (req, res) => {
     }
 
     try {
+        const { data: userAuth } = await supabaseAdmin.auth.admin.getUserById(id);
+        if (userAuth?.user?.email === 'admin@nexuspro.com') {
+            return res.status(403).json({ success: false, message: 'Safety check: Cannot delete the primary system administrator.' });
+        }
+
         logger.warn(`[Admin API] Deleting user ${id}`, { adminId: req.user?.id });
 
         // 1. Delete from Supabase Auth
@@ -105,13 +118,14 @@ export const getLogs = async (req, res) => {
     try {
         let query = supabaseAdmin
             .from('audit_logs')
-            .select('*', { count: 'exact' })
-            .order('timestamp', { ascending: false })
-            .range(page * limit, (page + 1) * limit - 1);
+            .select('*', { count: 'exact' });
 
-        if (level) {
-            query = query.eq('level', level);
+        if (level && level !== 'all') {
+            query = query.eq('level', level.toLowerCase());
         }
+
+        query = query.order('timestamp', { ascending: false })
+            .range(page * limit, (page + 1) * limit - 1);
 
         const { data, error, count } = await query;
 

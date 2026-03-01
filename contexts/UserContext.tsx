@@ -45,6 +45,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
                                 status: 'Active',
                                 avatar: `https://ui-avatars.com/api/?name=${profileData.name || 'User'}`,
                                 access: profileData.access || profileData.permissions || [],
+                                subscription_status: profileData.subscription_status || null,
                             });
                         } else {
                             localStorage.removeItem('nexus_token');
@@ -54,15 +55,49 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
                     console.error('UserContext: Session init failed', error);
                 }
             }
-            setLoading(false);
+            const isOAuthCallback = window.location.hash.includes('access_token=') || window.location.hash.includes('provider_token=');
+
+            if (!isOAuthCallback) {
+                setLoading(false);
+            } else {
+                console.log('UserContext: OAuth callback detected, deferring loading state to Auth listener...');
+                // Fallback timeout in case Supabase listener fails to fire
+                setTimeout(() => setLoading(false), 5000);
+            }
         };
         initSession();
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             console.log('UserContext: Auth state change:', event);
             if (session) {
-                // Fetch profile initially if supabase session exists
-                await fetchProfile(session.user.id, session.user.email);
+                let token = localStorage.getItem('nexus_token');
+
+                // If Supabase has a session but we don't have our custom Token (e.g. Google Login just happened)
+                if (!token && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+                    try {
+                        console.log('UserContext: Missing nexus_token, syncing with backend...');
+                        const response = await authApi.syncSession(session.access_token);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.token) {
+                                localStorage.setItem('nexus_token', data.token);
+                                token = data.token;
+                                console.log('UserContext: Session synced successfully.');
+                            }
+                        } else {
+                            console.error('UserContext: Session sync failed', response.status);
+                        }
+                    } catch (error) {
+                        console.error('UserContext: Error during session sync', error);
+                    }
+                }
+
+                if (token) {
+                    await fetchProfile(session.user.id, session.user.email);
+                } else {
+                    console.error('UserContext: Cannot fetch profile, no valid token after sync attempt.');
+                    setLoading(false);
+                }
             } else {
                 // Only clear user if NO custom token exists (avoid conflict with custom auth)
                 const token = localStorage.getItem('nexus_token');
@@ -217,10 +252,12 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
     const signInWithGoogle = async (): Promise<{ error: any }> => {
         try {
+            // Using window.location.origin instead of /#/auth/callback
+            // to prevent HashRouter from destroying the Supabase access_token hash.
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: `${window.location.origin}/#/auth/callback`,
+                    redirectTo: `${window.location.origin}/`,
                     queryParams: {
                         access_type: 'offline',
                         prompt: 'consent',

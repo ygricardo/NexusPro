@@ -83,8 +83,8 @@ export const createCheckoutSession = async (req, res) => {
                 },
             ],
             mode: 'subscription',
-            success_url: `${req.headers.origin}/#/?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${req.headers.origin}/#/plans`,
+            success_url: `${process.env.FRONTEND_URL || req.headers.origin}/#/?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${process.env.FRONTEND_URL || req.headers.origin}/#/plans`,
         });
 
         logger.info(`[Stripe] Checkout session created`, { planId, interval, userId: user.id, sessionId: session.id });
@@ -191,6 +191,56 @@ export const handleWebhook = async (req, res) => {
                         .eq('id', user.id);
                 } else {
                     logger.warn(`[Stripe Webhook] User not found for deleted sub`, { customerId });
+                }
+            }
+            break;
+        }
+
+        case 'invoice.payment_failed': {
+            const invoice = event.data.object;
+            const customerId = invoice.customer;
+            const attemptCount = invoice.attempt_count;
+
+            logger.warn(`[Stripe Webhook] Payment failed`, {
+                email: invoice.customer_email,
+                customerId,
+                attemptCount,
+                amount: invoice.amount_due
+            });
+
+            if (supabaseAdmin && customerId) {
+                // Try to find user by stripe_customer_id first
+                let { data: user } = await supabaseAdmin
+                    .from('profiles')
+                    .select('id, email')
+                    .eq('stripe_customer_id', customerId)
+                    .single();
+
+                // Fallback: look up by email from the invoice
+                if (!user && invoice.customer_email) {
+                    const { data: userByEmail } = await supabaseAdmin
+                        .from('profiles')
+                        .select('id, email')
+                        .eq('email', invoice.customer_email)
+                        .single();
+                    user = userByEmail;
+                }
+
+                if (user) {
+                    await supabaseAdmin
+                        .from('profiles')
+                        .update({
+                            subscription_status: 'past_due',
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', user.id);
+
+                    logger.info(`[Stripe Webhook] Marked user as past_due`, {
+                        userId: user.id,
+                        attemptCount
+                    });
+                } else {
+                    logger.warn(`[Stripe Webhook] Could not find user for failed invoice`, { customerId });
                 }
             }
             break;

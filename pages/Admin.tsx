@@ -152,20 +152,31 @@ export const AdminUsers = () => {
         setEditingUser({ ...user });
     };
 
-    const handleDeleteClick = async (id: string) => {
-        const isConfirmed = await confirm({
+    const handleDeleteClick = async (userToDelete: AdminUserType) => {
+        let confirmConfig = {
             title: t('delete_confirm_title') || 'Delete User',
             message: t('delete_confirm'),
-            type: 'danger',
+            type: 'danger' as const,
             confirmText: 'Delete'
-        });
+        };
+
+        if (userToDelete.role === 'admin') {
+            confirmConfig = {
+                title: '🚨 CRITICAL WARNING: DELETING ADMIN',
+                message: `You are about to permanently delete a SYSTEM ADMINISTRATOR (${userToDelete.email}). This can lock you out of the system forever. Are you absolutely certain?`,
+                type: 'danger' as const,
+                confirmText: 'YES, DELETE ADMIN FOREVER'
+            };
+        }
+
+        const isConfirmed = await confirm(confirmConfig);
 
         if (isConfirmed) {
             try {
-                const response = await authApi.deleteUser(id);
+                const response = await authApi.deleteUser(userToDelete.id);
                 // Check if response is ok, sometimes it returns 200 with result
                 if (response.ok) {
-                    setUsers(users.filter(u => u.id !== id));
+                    setUsers(users.filter(u => u.id !== userToDelete.id));
                     await showAlert('Success', 'User deleted successfully.', 'success');
                 } else {
                     const err = await response.json();
@@ -329,11 +340,16 @@ export const AdminUsers = () => {
                     <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
                         {filteredUsers.length > 0 ? (
                             filteredUsers.map((user) => (
-                                <tr key={user.id} className="hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors">
+                                <tr key={user.id} className={`transition-colors ${user.role === 'admin' ? 'bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20' : 'hover:bg-neutral-50 dark:hover:bg-white/5'}`}>
                                     <td className="py-4 px-6 flex items-center gap-3">
-                                        <div className={`size-8 rounded-full ${user.avatar_color}`}></div>
+                                        <div className={`size-8 rounded-full flex items-center justify-center ${user.role === 'admin' ? 'bg-red-100 dark:bg-red-900/30' : user.avatar_color}`}>
+                                            {user.role === 'admin' && <span className="material-symbols-outlined text-red-600 dark:text-red-400 text-sm">security</span>}
+                                        </div>
                                         <div>
-                                            <p className="font-medium text-neutral-900 dark:text-white">{user.name}</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className={`font-medium ${user.role === 'admin' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-neutral-900 dark:text-white'}`}>{user.name}</p>
+                                                {user.role === 'admin' && <span className="material-symbols-outlined text-[14px] text-red-500 animate-pulse" title="System Administrator">warning</span>}
+                                            </div>
                                             <p className="text-xs text-neutral-500">{user.email}</p>
                                         </div>
                                     </td>
@@ -388,9 +404,9 @@ export const AdminUsers = () => {
                                                 <span className="material-symbols-outlined text-lg">edit</span>
                                             </button>
                                             <button
-                                                onClick={() => handleDeleteClick(user.id)}
-                                                className="size-8 flex items-center justify-center rounded text-neutral-500 hover:text-red-600 hover:bg-white dark:hover:bg-neutral-800 transition-colors"
-                                                title="Delete User"
+                                                onClick={() => handleDeleteClick(user)}
+                                                className={`size-8 flex items-center justify-center rounded transition-colors ${user.role === 'admin' ? 'text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40' : 'text-neutral-500 hover:text-red-600 hover:bg-white dark:hover:bg-neutral-800'}`}
+                                                title={user.role === 'admin' ? "DANGER: Delete Admin" : "Delete User"}
                                             >
                                                 <span className="material-symbols-outlined text-lg">delete</span>
                                             </button>

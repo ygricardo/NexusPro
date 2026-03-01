@@ -252,14 +252,14 @@ const solveRecursiveReplacement = (start: number, target: number, steps: number,
 
 };
 
-const generatePath = (initialBL: number, totalWeeks: number, masteryEnds: number[], type: 'reduction' | 'replacement') => {
+const generatePath = (initialBL: number, totalWeeks: number, masteryEnds: number[], type: 'reduction' | 'replacement', masteryCounterOffset: number = 0) => {
     let fullPath: { weekNum: number; value: number; isMastery: boolean; isCycleEnd: boolean }[] = [];
     let currentVal = initialBL;
     let startWeek = 1;
     let milestones = [...masteryEnds];
     if (milestones.length === 0 || milestones[milestones.length - 1] < totalWeeks) milestones.push(totalWeeks);
 
-    let masteryCounter = 0;
+    let masteryCounter = masteryCounterOffset;
 
     milestones.forEach((milestone) => {
         const steps = milestone - startWeek + 1;
@@ -281,6 +281,7 @@ const generatePath = (initialBL: number, totalWeeks: number, masteryEnds: number
             currentVal = segment ? segment[segment.length - 1] : currentVal;
         } else {
             // Lógica de Replacement (10 en 10) - V26 Logic
+            // Each mastery cycle targets an absolute multiple of 10 (10, 20, 30...)
             if (isMastery) {
                 masteryCounter++;
                 target = masteryCounter * 10;
@@ -382,6 +383,23 @@ const BCBAGenerator = () => {
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
 
+    // Mastery Locks: maps behavior name → array of locked week indices (0-based, inclusive)
+    const [masteryLocks, setMasteryLocks] = useState<Record<string, number[]>>({});
+
+    const toggleMasteryLock = (tabPrefix: string, behaviorName: string, weekIndex: number) => {
+        setMasteryLocks(prev => {
+            const lockKey = `${tabPrefix}_${behaviorName}`;
+            const current = prev[lockKey] || [];
+            const exists = current.includes(weekIndex);
+            return {
+                ...prev,
+                [lockKey]: exists
+                    ? current.filter(w => w !== weekIndex)
+                    : [...current, weekIndex].sort((a, b) => a - b)
+            };
+        });
+    };
+
     // Load from SessionStorage on Mount (with User Check)
     useEffect(() => {
         if (loading) return; // Wait for user to be loaded
@@ -397,6 +415,7 @@ const BCBAGenerator = () => {
                     if (parsed.data) setData(parsed.data);
                     if (parsed.selectedClientId) setSelectedClientId(parsed.selectedClientId);
                     if (parsed.activeHistoryId) setActiveHistoryId(parsed.activeHistoryId);
+                    if (parsed.masteryLocks) setMasteryLocks(parsed.masteryLocks);
                 } else {
                     // Stale data or different user -> Clear it
                     sessionStorage.removeItem('bcba_session_state');
@@ -416,11 +435,12 @@ const BCBAGenerator = () => {
             maladaptiveRows,
             replacementRows,
             data,
+            masteryLocks,
             selectedClientId,
             activeHistoryId
         };
         sessionStorage.setItem('bcba_session_state', JSON.stringify(stateToSave));
-    }, [maladaptiveRows, replacementRows, data, selectedClientId, activeHistoryId, isLoaded, user]);
+    }, [maladaptiveRows, replacementRows, data, masteryLocks, selectedClientId, activeHistoryId, isLoaded, user]);
 
     // Clear Session on Logout
     useEffect(() => {
@@ -499,7 +519,7 @@ const BCBAGenerator = () => {
         setLoadingHistory(true);
         try {
             const clientId = selectedClientId || undefined;
-            const response = await authApi.fetchGenerationHistory('BCBA', clientId);
+            const response = await authApi.getHistory('BCBA');
             if (response.ok) {
                 const json = await response.json();
                 if (json.success) {
@@ -615,13 +635,44 @@ const BCBAGenerator = () => {
         const mEnds = row.mastery.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n)).sort((a, b) => a - b);
         const type = currentTab === 'maladaptives' ? 'reduction' : 'replacement';
 
-        const behaviorPath = generatePath(row.baseline, row.weeks, mEnds, type);
+        // --- Mastery Lock Logic ---
+        const lockKey = `${currentTab}_${row.name}`;
+        const lockedWeeks = masteryLocks[lockKey] || masteryLocks[row.name] || [];
+        const frozenUntil = lockedWeeks.length > 0 ? Math.max(...lockedWeeks) + 1 : 0;
 
-        const values = behaviorPath.map(p => p.value);
-        const mastery = behaviorPath.map(p => p.isMastery);
+        let finalValues: (number | null)[];
+        let finalMastery: boolean[];
 
-        const paddedValues = [...values, ...Array(Math.max(0, maxWeeks - values.length)).fill(null)];
-        const paddedMastery = [...mastery, ...Array(Math.max(0, maxWeeks - mastery.length)).fill(false)];
+        if (frozenUntil > 0) {
+            // Preserve frozen weeks, generate only what comes after
+            const existingValues = (data[currentTab][row.name] || []).slice(0, frozenUntil);
+            const existingMastery = (data.mastery?.[row.name] || []).slice(0, frozenUntil);
+            const startBaseline = (existingValues[frozenUntil - 1] as number) ?? row.baseline;
+            const remainingWeeks = row.weeks - frozenUntil;
+
+            if (remainingWeeks <= 0) return; // all weeks locked
+
+            const adjustedMEnds = mEnds.filter(m => m > frozenUntil).map(m => m - frozenUntil);
+            // Count how many mastery periods are already frozen so the counter continues correctly
+            const lockedMasteryCount = mEnds.filter(m => m <= frozenUntil).length;
+            const newPath = generatePath(startBaseline, remainingWeeks, adjustedMEnds, type, lockedMasteryCount);
+
+            const newValues = newPath.map(p => p.value);
+            const newMasteryArr = newPath.map(p => p.isMastery);
+
+            finalValues = [...existingValues, ...newValues];
+            finalMastery = [...existingMastery, ...newMasteryArr];
+        } else {
+            // No locks — full fresh generation
+            const behaviorPath = generatePath(row.baseline, row.weeks, mEnds, type);
+            finalValues = behaviorPath.map(p => p.value);
+            finalMastery = behaviorPath.map(p => p.isMastery);
+        }
+
+        const paddedValues = [...finalValues, ...Array(Math.max(0, maxWeeks - finalValues.length)).fill(null)];
+        const paddedMastery = [...finalMastery, ...Array(Math.max(0, maxWeeks - finalMastery.length)).fill(false)];
+
+        const scrollPos = window.scrollY;
 
         setData(prev => ({
             ...prev,
@@ -634,14 +685,13 @@ const BCBAGenerator = () => {
                 [row.name]: paddedMastery
             }
         }));
+
+        setTimeout(() => window.scrollTo(0, scrollPos), 0);
     };
 
     const generateAll = () => {
         const newDataForTab: Record<string, (number | null)[]> = {};
         const newMasteryForTab: Record<string, boolean[]> = {};
-
-        // We need to track cycle ends across rows to avoid alignment (Visual Aesthetic)
-        let prevEndWeeks: number[] = [];
 
         activeRows.forEach(row => {
             if (!row.name) return;
@@ -649,25 +699,52 @@ const BCBAGenerator = () => {
             const mEnds = row.mastery.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n)).sort((a, b) => a - b);
             const type = currentTab === 'maladaptives' ? 'reduction' : 'replacement';
 
-            const behaviorPath = generatePath(row.baseline, row.weeks, mEnds, type);
+            // --- Mastery Lock Logic ---
+            const lockKey = `${currentTab}_${row.name}`;
+            const lockedWeeks = masteryLocks[lockKey] || masteryLocks[row.name] || [];
+            const frozenUntil = lockedWeeks.length > 0 ? Math.max(...lockedWeeks) + 1 : 0;
 
-            // Map to DataState format
-            const values = behaviorPath.map(p => p.value);
-            const mastery = behaviorPath.map(p => p.isMastery);
+            let finalValues: (number | null)[];
+            let finalMastery: boolean[];
 
-            // Pad to maxWeeks if row.weeks < maxWeeks
-            const paddedValues = [...values, ...Array(Math.max(0, maxWeeks - values.length)).fill(null)];
-            const paddedMastery = [...mastery, ...Array(Math.max(0, maxWeeks - mastery.length)).fill(false)];
+            if (frozenUntil > 0) {
+                const existingValues = (data[currentTab][row.name] || []).slice(0, frozenUntil);
+                const existingMastery = (data.mastery?.[row.name] || []).slice(0, frozenUntil);
+                const startBaseline = (existingValues[frozenUntil - 1] as number) ?? row.baseline;
+                const remainingWeeks = row.weeks - frozenUntil;
 
-            newDataForTab[row.name] = paddedValues;
-            newMasteryForTab[row.name] = paddedMastery;
+                if (remainingWeeks <= 0) {
+                    newDataForTab[row.name] = [...existingValues, ...Array(Math.max(0, maxWeeks - existingValues.length)).fill(null)];
+                    newMasteryForTab[row.name] = [...existingMastery, ...Array(Math.max(0, maxWeeks - existingMastery.length)).fill(false)];
+                    return;
+                }
+
+                const adjustedMEnds = mEnds.filter(m => m > frozenUntil).map(m => m - frozenUntil);
+                // Count how many mastery periods are already frozen so the counter continues correctly
+                const lockedMasteryCount = mEnds.filter(m => m <= frozenUntil).length;
+                const newPath = generatePath(startBaseline, remainingWeeks, adjustedMEnds, type, lockedMasteryCount);
+
+                finalValues = [...existingValues, ...newPath.map(p => p.value)];
+                finalMastery = [...existingMastery, ...newPath.map(p => p.isMastery)];
+            } else {
+                const behaviorPath = generatePath(row.baseline, row.weeks, mEnds, type);
+                finalValues = behaviorPath.map(p => p.value);
+                finalMastery = behaviorPath.map(p => p.isMastery);
+            }
+
+            newDataForTab[row.name] = [...finalValues, ...Array(Math.max(0, maxWeeks - finalValues.length)).fill(null)];
+            newMasteryForTab[row.name] = [...finalMastery, ...Array(Math.max(0, maxWeeks - finalMastery.length)).fill(false)];
         });
+
+        const scrollPos = window.scrollY;
 
         setData(prev => ({
             ...prev,
             [currentTab]: newDataForTab,
             mastery: { ...prev.mastery, ...newMasteryForTab }
         }));
+
+        setTimeout(() => window.scrollTo(0, scrollPos), 0);
     };
 
     const addInputRow = () => {
@@ -695,6 +772,12 @@ const BCBAGenerator = () => {
             setActiveRows([]);
             setData(prev => ({ ...prev, [currentTab]: {} }));
             setActiveHistoryId(null);
+            // Clear locks for behaviors in this tab
+            setMasteryLocks(prev => {
+                const updated = { ...prev };
+                activeRows.forEach(r => { if (r.name) delete updated[r.name]; });
+                return updated;
+            });
         }
     };
 
@@ -705,7 +788,8 @@ const BCBAGenerator = () => {
             const historyPayload = {
                 module_type: 'BCBA',
                 client_id: selectedClientId || null,
-                input_data: { maladaptives: maladaptiveRows, replacements: replacementRows },
+                // masteryLocks stored in input_data alongside row config
+                input_data: { maladaptives: maladaptiveRows, replacements: replacementRows, masteryLocks },
                 output_data: data
             };
 
@@ -724,10 +808,11 @@ const BCBAGenerator = () => {
                 }
                 fetchHistory();
             } else {
-                await showAlert('Error', 'Failed to save.', 'danger');
+                const errBody = await response.json().catch(() => ({}));
+                await showAlert('Error', `[DEV ERROR ${response.status}] ${errBody.message || 'Unknown'} - Details: ${JSON.stringify(errBody.errors || errBody)}`, 'danger');
             }
-        } catch (e) {
-            await showAlert('Error', 'Failed to save.', 'danger');
+        } catch (e: any) {
+            await showAlert('Error', `[CLIENT ERROR] ${e?.message || e}`, 'danger');
         } finally {
             setSaving(false);
         }
@@ -1024,13 +1109,13 @@ const BCBAGenerator = () => {
                             <>
                                 {/* Table First (Moved Above Chart) */}
                                 <div className="bg-white dark:bg-surface-dark rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                                    <div className="overflow-x-auto">
+                                    <div className="overflow-x-auto custom-scrollbar">
                                         <table className="w-full text-sm border-collapse">
-                                            <thead className="bg-neutral-50 dark:bg-neutral-900 text-xs uppercase font-bold text-neutral-500 sticky top-0">
+                                            <thead className="bg-neutral-50 dark:bg-neutral-900 uppercase font-bold text-neutral-500 sticky top-0">
                                                 <tr>
-                                                    <th className="p-3 border-r border-neutral-200 dark:border-neutral-800 sticky left-0 bg-neutral-50 dark:bg-neutral-900 z-10 text-left">Behavior (BL)</th>
+                                                    <th className="px-3 py-3 border-r border-neutral-200 dark:border-neutral-800 sticky left-0 bg-neutral-50 dark:bg-neutral-900 z-10 text-left min-w-[170px] w-[170px] text-sm">Behavior (BL)</th>
                                                     {Array.from({ length: maxWeeks }).map((_, i) => (
-                                                        <th key={i} className="p-2 border-r border-neutral-200 dark:border-neutral-800 text-center min-w-[40px]">S{i + 1}</th>
+                                                        <th key={i} className="px-1 py-3 border-r border-neutral-200 dark:border-neutral-800 text-center min-w-[44px] text-sm">S{i + 1}</th>
                                                     ))}
                                                 </tr>
                                             </thead>
@@ -1039,20 +1124,48 @@ const BCBAGenerator = () => {
                                                     const row = activeRows.find(r => r.name === key);
                                                     return (
                                                         <tr key={key} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                                                            <td className="p-3 font-bold sticky left-0 bg-white dark:bg-surface-dark border-r border-neutral-200 dark:border-neutral-800 text-left min-w-[180px]">
+                                                            <td className="px-3 py-3 font-bold sticky left-0 bg-white dark:bg-surface-dark border-r border-neutral-200 dark:border-neutral-800 text-left min-w-[170px] w-[170px] truncate text-sm" title={key}>
                                                                 {key} {row ? `(BL: ${row.baseline})` : ''}
                                                             </td>
                                                             {data[currentTab][key].map((val, idx) => {
-                                                                // Determine visual style based on Mastery
                                                                 const isMastery = data.mastery?.[key]?.[idx];
+                                                                const nextIsMastery = data.mastery?.[key]?.[idx + 1];
+                                                                const isMasteryBlockEnd = isMastery && !nextIsMastery;
+                                                                const lockKey = `${currentTab}_${key}`;
+                                                                const lockArray = masteryLocks[lockKey] || masteryLocks[key] || [];
+                                                                const isLocked = lockArray.includes(idx);
+                                                                const isFrozen = lockArray.length > 0 && idx < Math.max(...lockArray) + 1;
                                                                 return (
                                                                     <td
                                                                         key={idx}
-                                                                        className={`p-2 text-center border-r border-neutral-200 dark:border-neutral-800 font-mono ${isMastery ? 'bg-yellow-100 text-yellow-800 font-bold dark:bg-yellow-900/40 dark:text-yellow-200 relative' : ''
-                                                                            }`}
+                                                                        className={`px-1 py-3 text-center border-r border-neutral-200 dark:border-neutral-800 font-mono relative overflow-visible min-w-[44px]
+                                                                            ${isMastery ? 'bg-yellow-100 text-yellow-800 font-bold dark:bg-yellow-900/40 dark:text-yellow-200' : ''}
+                                                                            ${isFrozen && !isMastery ? 'bg-neutral-50 dark:bg-neutral-900/60' : ''}
+                                                                        `}
                                                                     >
-                                                                        {val}
-                                                                        {isMastery && <span className="absolute top-0 right-1 text-[8px] opacity-50">M</span>}
+                                                                        {/* Frozen indicator stripe */}
+                                                                        {isFrozen && (
+                                                                            <span className="absolute top-0 left-0 w-0.5 h-full bg-amber-400/60" />
+                                                                        )}
+                                                                        <span className="text-base font-bold">{val}</span>
+                                                                        {isMastery && <span className="absolute top-1 right-1 text-[10px] font-bold leading-none opacity-50">M</span>}
+                                                                        {/* Lock toggle button at end of each mastery block */}
+                                                                        {isMasteryBlockEnd && (
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); toggleMasteryLock(currentTab, key, idx); }}
+                                                                                title={isLocked ? 'Locked — click to unlock this period' : 'Click to lock and protect this mastery period'}
+                                                                                className={`absolute bottom-[-11px] left-1/2 -translate-x-1/2 z-30
+                                                                                    size-[22px] rounded-full flex items-center justify-center shadow-md border-2 transition-all
+                                                                                    ${isLocked
+                                                                                        ? 'bg-amber-400 border-amber-500 text-white hover:bg-amber-500'
+                                                                                        : 'bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-400 hover:border-amber-400 hover:text-amber-500'
+                                                                                    }`}
+                                                                            >
+                                                                                <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
+                                                                                    {isLocked ? 'lock' : 'lock_open'}
+                                                                                </span>
+                                                                            </button>
+                                                                        )}
                                                                     </td>
                                                                 );
                                                             })}
@@ -1116,10 +1229,12 @@ const BCBAGenerator = () => {
                                             <button
                                                 onClick={() => {
                                                     if (h.output_data) setData(h.output_data);
-                                                    // Restore Inputs if available
+                                                    // Restore Inputs and masteryLocks if available
                                                     if (h.input_data) {
                                                         if (h.input_data.maladaptives) setMaladaptiveRows(h.input_data.maladaptives);
                                                         if (h.input_data.replacements) setReplacementRows(h.input_data.replacements);
+                                                        // Restore locks (stored in input_data since they are config)
+                                                        setMasteryLocks(h.input_data.masteryLocks || {});
                                                     }
                                                     setActiveHistoryId(h.id);
                                                     setActiveTab('generator');

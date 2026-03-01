@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { authApi } from '../lib/api';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -22,6 +22,8 @@ interface ClientHistory {
 const ClientManager = () => {
     const { t } = useLanguage();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const tabParam = searchParams.get('tab') || 'daily'; // read ?tab= from URL
     const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -90,7 +92,7 @@ const ClientManager = () => {
 
     return (
         <Layout>
-            <div className="max-w-7xl mx-auto space-y-8">
+            <div className="w-full px-4 md:px-8 mx-auto space-y-4 sm:space-y-8 flex flex-col h-[calc(100vh-6rem)]">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
@@ -109,9 +111,9 @@ const ClientManager = () => {
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1 min-h-0">
                     {/* Client List - Full Width */}
-                    <div className="col-span-12 space-y-4">
+                    <div className="col-span-12 space-y-4 flex flex-col h-full">
                         <div className="relative">
                             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 text-lg">search</span>
                             <input
@@ -123,7 +125,7 @@ const ClientManager = () => {
                             />
                         </div>
 
-                        <div className="bg-surface-dark border border-neutral-800 rounded-2xl overflow-hidden min-h-[600px] flex flex-col">
+                        <div className="bg-surface-dark border border-neutral-800 rounded-2xl overflow-hidden flex-1 flex flex-col min-h-0">
                             {loading ? (
                                 <div className="p-12 text-center text-neutral-500 flex flex-col items-center">
                                     <span className="material-symbols-outlined text-4xl mb-4 animate-spin">progress_activity</span>
@@ -142,11 +144,11 @@ const ClientManager = () => {
                                         <div className="col-span-3">Joined Date</div>
                                         <div className="col-span-2 text-right">Actions</div>
                                     </div>
-                                    <div className="overflow-y-auto custom-scrollbar max-h-[70vh]">
+                                    <div className="overflow-y-auto custom-scrollbar flex-1">
                                         {filteredClients.map(client => (
                                             <div
                                                 key={client.id}
-                                                onClick={() => navigate(`/clients/${client.id}`)}
+                                                onClick={() => navigate(`/clients/${client.id}?tab=${tabParam}`)}
                                                 className="group flex flex-col md:grid md:grid-cols-12 gap-4 p-4 hover:bg-white/5 transition-all items-center border-l-4 border-transparent hover:border-primary cursor-pointer"
                                             >
                                                 <div className="col-span-4 flex items-center gap-3 w-full">
@@ -173,7 +175,7 @@ const ClientManager = () => {
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            navigate(`/clients/${client.id}`);
+                                                            navigate(`/clients/${client.id}?tab=${tabParam}`);
                                                         }}
                                                         className="p-2 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg transition-all"
                                                         title="View Profile"

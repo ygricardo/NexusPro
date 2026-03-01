@@ -89,6 +89,7 @@ export const login = async (req, res) => {
             .single();
 
         let userRole = 'user';
+        let userPlan = 'no_plan';
         let permissions = [];
         let userName = user.user_metadata?.name || email.split('@')[0];
 
@@ -97,6 +98,7 @@ export const login = async (req, res) => {
         } else {
             logger.debug(`[Auth] Profile found for ${email}`, { role: profile.role_id });
             userRole = profile.role_id || 'user';
+            userPlan = profile.plan || 'no_plan';
             permissions = profile.roles?.role_permissions?.map(rp => rp.permission_name) || [];
             userName = profile.name || userName;
         }
@@ -109,6 +111,7 @@ export const login = async (req, res) => {
                 sub: user.id,
                 email: user.email,
                 role: userRole,
+                plan: userPlan,
                 permissions,
                 access
             },
@@ -171,6 +174,95 @@ export const getProfile = async (req, res) => {
 
     } catch (err) {
         logger.error('[Auth] getProfile error', { error: err.message });
+        res.status(500).json({ error: err.message });
+    }
+};
+
+export const syncSession = async (req, res) => {
+    // req.user is populated by authenticateSupabase middleware
+    const supabaseUser = req.user;
+
+    if (!supabaseAdmin) {
+        logger.error('[Auth] syncSession - supabaseAdmin client unavailable');
+        return res.status(500).json({ error: 'Supabase service role unavailable' });
+    }
+
+    try {
+        logger.debug(`[Auth] Syncing session for OAuth user`, { email: supabaseUser.email });
+
+        // 1. Fetch user profile to get roles and permissions
+        const { data: profile, error } = await supabaseAdmin
+            .from('profiles')
+            .select('*, roles(*, role_permissions(permission_name))')
+            .eq('id', supabaseUser.id)
+            .single();
+
+        let userRole = 'user';
+        let userPlan = 'no_plan';
+        let permissions = [];
+        let userName = supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name || supabaseUser.email.split('@')[0];
+
+        if (error || !profile) {
+            logger.warn(`[Auth] syncSession - Profile not found for ${supabaseUser.email}, creating it now as fallback.`, { error: error?.message });
+
+            const { error: upsertError } = await supabaseAdmin
+                .from('profiles')
+                .upsert({
+                    id: supabaseUser.id,
+                    email: supabaseUser.email,
+                    full_name: userName,
+                    name: userName,
+                    role_id: 'user',
+                    plan: 'no_plan',
+                    subscription_status: 'inactive',
+                    access: [],
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+
+            if (upsertError) {
+                logger.error('[Auth] Failed to auto-create profile for Google Auth user', { error: upsertError.message });
+            }
+        } else {
+            userRole = profile.role_id || 'user';
+            userPlan = profile.plan || 'no_plan';
+            permissions = profile.roles?.role_permissions?.map(rp => rp.permission_name) || [];
+            userName = profile.name || userName;
+        }
+
+        const access = profile?.access || [];
+
+        // 2. Generate Nexus JWT (matching the logic in `login`)
+        const token = jwt.sign(
+            {
+                sub: supabaseUser.id,
+                email: supabaseUser.email,
+                role: userRole,
+                plan: userPlan,
+                permissions,
+                access
+            },
+            JWT_SECRET,
+            { expiresIn: TOKEN_EXPIRY }
+        );
+
+        logger.info(`[Auth] Session sync successful for ${supabaseUser.email}`);
+
+        res.json({
+            token,
+            user: {
+                id: supabaseUser.id,
+                email: supabaseUser.email,
+                name: userName,
+                role: userRole,
+                permissions,
+                access,
+                plan: profile?.plan || 'basic'
+            }
+        });
+
+    } catch (err) {
+        logger.error('[Auth] syncSession error', { error: err.message });
         res.status(500).json({ error: err.message });
     }
 };

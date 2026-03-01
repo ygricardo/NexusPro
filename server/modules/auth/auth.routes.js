@@ -1,6 +1,6 @@
 import express from 'express';
-import { login, register, getProfile } from './auth.controller.js';
-import { authenticate } from './auth.middleware.js';
+import { login, register, getProfile, syncSession } from './auth.controller.js';
+import { authenticate, authenticateSupabase } from './auth.middleware.js';
 import { authLimiter } from '../../shared/middleware/rateLimiter.js';
 
 const router = express.Router();
@@ -39,5 +39,16 @@ router.post('/login', authLimiter, login);
  *       - bearerAuth: []
  */
 router.get('/profile', authenticate, getProfile);
+
+/**
+ * @openapi
+ * /api/auth/sync:
+ *   post:
+ *     summary: Sync Supabase OAuth session and retrieve Nexus JWT
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: [] 
+ */
+router.post('/sync', authenticateSupabase, syncSession);
 
 export default router;

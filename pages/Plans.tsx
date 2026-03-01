@@ -18,7 +18,7 @@ const Plans = () => {
     const { success, error: toastError } = useToast();
     const [plans, setPlans] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [currentPlan, setCurrentPlan] = useState<string | null>(null);
+    const [currentPlan, setCurrentPlan] = useState<string | null>(user?.plan || null);
     const [processing, setProcessing] = useState<string | null>(null);
     const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
@@ -160,14 +160,13 @@ const Plans = () => {
 
     const fetchUserPlan = async () => {
         if (!user) return;
-        const { data } = await supabase.from('profiles').select('plan').eq('id', user.id).single();
-        if (data) setCurrentPlan(data.plan);
+        // Read plan from user context (loaded from backend API), not direct Supabase query
+        setCurrentPlan(user.plan || 'no_plan');
     };
 
     const handleSubscribe = async (priceId: string) => {
         setProcessing(priceId);
         try {
-            console.log('DEBUG: handleSubscribe', { currentPlan, subscriptionDetails, priceId });
 
             // Validate against Global State first to match UI
             if (!user) {
@@ -181,7 +180,6 @@ const Plans = () => {
             // If user has an active plan (and is not canceled), UPDATE subscription directly
             if (currentPlan && currentPlan !== 'no_plan' && subscriptionDetails) {
                 if (!subscriptionDetails.cancel_at_period_end) {
-                    console.log('DEBUG: Updating Subscription directly');
                     const response = await authApi.updateSubscription(priceId);
 
                     if (response.ok) {
@@ -206,7 +204,6 @@ const Plans = () => {
                 }
             }
 
-            console.log('DEBUG: Creating Checkout Session');
             // Otherwise, create standard checkout session
             const response = await authApi.createCheckoutSession(priceId, 'month');
 
@@ -245,12 +242,70 @@ const Plans = () => {
                     </p>
                 </div>
 
+                {/* Current Membership Status Banner */}
+                {currentPlan && currentPlan !== 'no_plan' && (
+                    <div className="max-w-3xl mx-auto w-full px-4">
+                        <div className="glass-card rounded-2xl p-5 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                                <div className="size-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-primary">verified</span>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-blue-200/50 uppercase tracking-widest font-bold">Current Plan</p>
+                                    <p className="text-lg font-black text-white">{plans.find(p => p.id === currentPlan)?.name || currentPlan} Plan</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {subscriptionDetails && (subscriptionDetails.current_period_end > 0 || (subscriptionDetails.cancel_at && subscriptionDetails.cancel_at > 0)) && (
+                                    <div className="text-right mr-3">
+                                        <p className="text-[10px] text-blue-200/40 uppercase tracking-wider font-bold">
+                                            {subscriptionDetails.cancel_at_period_end ? 'Expires' : 'Renews'}
+                                        </p>
+                                        <p className={`text-sm font-bold ${subscriptionDetails.cancel_at_period_end ? 'text-orange-400' : 'text-emerald-400'}`}>
+                                            {new Date((subscriptionDetails.current_period_end || subscriptionDetails.cancel_at!) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </p>
+                                    </div>
+                                )}
+                                {subscriptionDetails?.cancel_at_period_end ? (
+                                    <button
+                                        onClick={handleResumeSubscription}
+                                        disabled={processing === 'resuming'}
+                                        className="px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-black uppercase tracking-wider hover:bg-emerald-600 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">autorenew</span>
+                                        Renew
+                                    </button>
+                                ) : subscriptionDetails ? (
+                                    <button
+                                        onClick={handleCancelClick}
+                                        disabled={!!processing}
+                                        className="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/30 text-xs font-black uppercase tracking-wider hover:bg-red-500/20 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">cancel</span>
+                                        Cancel
+                                    </button>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Plans Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto px-4">
                     {plans.map((plan) => (
-                        <div key={plan.id} className="glass-card relative rounded-3xl p-8 hover:scale-[1.02] transition-transform duration-300 border border-white/10 flex flex-col">
+                        <div key={plan.id} className={`glass-card relative rounded-3xl p-8 hover:scale-[1.02] transition-transform duration-300 flex flex-col ${currentPlan === plan.id
+                            ? 'border-2 border-primary shadow-[0_0_30px_rgba(59,130,246,0.15)]'
+                            : 'border border-white/10'
+                            }`}>
                             {/* Best Value Badge */}
-                            {plan.name === 'Advanced' && (
+                            {/* YOUR PLAN Badge */}
+                            {currentPlan === plan.id && (
+                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-primary to-cyan-400 text-white text-xs font-black uppercase tracking-widest rounded-full shadow-lg z-10">
+                                    ✓ Your Plan
+                                </div>
+                            )}
+                            {/* Best Value Badge — only show if NOT current plan */}
+                            {plan.name === 'Advanced' && currentPlan !== plan.id && (
                                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-secondary to-yellow-400 text-neutral-900 text-xs font-black uppercase tracking-widest rounded-full shadow-glow-yellow">
                                     Best Value
                                 </div>

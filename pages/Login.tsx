@@ -75,10 +75,12 @@ const Login = () => {
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
 
-    // Force logout on mount to prevent stale sessions
+    // Redirect to dashboard if session syncs in the background
     useEffect(() => {
-        signOut();
-    }, []);
+        if (user) {
+            navigate('/');
+        }
+    }, [user, navigate]);
 
     // Load saved email
     useEffect(() => {

@@ -21,10 +21,6 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [react()],
-    define: {
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -38,7 +34,7 @@ export default defineConfig(({ mode }) => {
             'vendor-ui': ['framer-motion', 'clsx', 'tailwind-merge'],
             'vendor-charts': ['recharts'],
             'vendor-supabase': ['@supabase/supabase-js'],
-            'vendor-utils': ['xlsx']
+            'vendor-utils': ['exceljs']
           }
         }
       }

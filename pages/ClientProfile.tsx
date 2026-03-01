@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { authApi } from '../lib/api';
 import { motion } from 'framer-motion';
@@ -20,10 +20,15 @@ const ClientProfile = () => {
     const { success, error: toastError } = useToast();
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
-    // Determine initial tab based on plan
-    const initialTab = 'daily';
+    const [searchParams] = useSearchParams();
 
-    const [historyTab, setHistoryTab] = useState<'notes' | 'daily' | 'weekly'>(initialTab as any);
+    // Determine initial tab from URL ?tab= param, fallback to 'daily'
+    const tabParam = searchParams.get('tab');
+    const initialTab: 'daily' | 'weekly' | 'notes' =
+        tabParam === 'weekly' ? 'weekly' :
+            tabParam === 'notes' ? 'notes' : 'daily';
+
+    const [historyTab, setHistoryTab] = useState<'notes' | 'daily' | 'weekly'>(initialTab);
     const [selectedNote, setSelectedNote] = useState<any>(null);
 
     useEffect(() => {
@@ -453,6 +458,7 @@ const ClientProfile = () => {
                                                                                 replacements: {},
                                                                                 mastery: {}
                                                                             },
+                                                                            masteryLocks: record.input_data?.masteryLocks || {},
                                                                             selectedClientId: client.id,
                                                                             activeHistoryId: record.id
                                                                         };

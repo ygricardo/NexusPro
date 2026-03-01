@@ -40,6 +40,11 @@ const MENU_ITEMS: MenuItem[] = [
         icon: 'card_membership',
         labelKey: 'membership'
     },
+    {
+        to: '/help',
+        icon: 'help',
+        labelKey: 'help_center_title' // Note: using 'help_center_title' instead of 'help_center' to match translations
+    },
     // Admin Only Links
     {
         to: '/admin',

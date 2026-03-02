@@ -40,7 +40,7 @@ app.use(helmet({
 // In production with Railway (single service), frontend and backend share
 // the same origin, so CORS is only needed for cross-origin tools (Stripe, etc.)
 // FRONTEND_URL must match the Railway-assigned domain or your custom domain.
-const isRailwayDomain = (origin: string) =>
+const isRailwayDomain = (origin) =>
     origin?.endsWith('.railway.app');
 
 const allowedOrigins = config.nodeEnv === 'production'

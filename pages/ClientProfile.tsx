@@ -113,7 +113,7 @@ const ClientProfile = () => {
 
     return (
         <Layout>
-            <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
+            <div className="min-h-screen bg-neutral-50 dark:bg-midnight">
                 {/* HERO HEADER - Folder Style */}
                 <div className="bg-white dark:bg-surface-dark border-b border-neutral-200 dark:border-neutral-800 shadow-sm">
                     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">

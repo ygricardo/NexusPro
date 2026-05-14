@@ -129,5 +129,24 @@ export const authApi = {
     getNotesByClient: (clientId: string) => apiFetch(`/notes/client/${clientId}`),
     deleteNote: (id: string) => apiFetch(`/notes/${id}`, {
         method: 'DELETE'
+    }),
+
+    // Plans API
+    getActivePlans: () => apiFetch('/plans'),
+    getAllPlansAdmin: () => apiFetch('/admin/plans'),
+    createPlan: (data: any) => apiFetch('/admin/plans', {
+        method: 'POST',
+        body: JSON.stringify(data)
+    }),
+    updatePlan: (id: string, data: any) => apiFetch(`/admin/plans/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+    }),
+    togglePlan: (id: string, isActive: boolean) => apiFetch(`/admin/plans/${id}/toggle`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: isActive })
+    }),
+    deletePlan: (id: string) => apiFetch(`/admin/plans/${id}`, {
+        method: 'DELETE'
     })
 };

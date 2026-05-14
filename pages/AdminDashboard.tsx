@@ -21,9 +21,13 @@ const AdminDashboard = () => {
 
     const calculateStats = async () => {
         try {
-            // Fetch profiles via Admin API
-            const response = await authApi.getUsers();
-            const result = await response.json();
+            // Fetch profiles and plans in parallel
+            const [usersRes, plansRes] = await Promise.all([
+                authApi.getUsers(),
+                authApi.getAllPlansAdmin(),
+            ]);
+            const result = await usersRes.json();
+            const plansJson = await plansRes.json();
 
             if (!result.success || !result.data) {
                 console.error('Error fetching admin data:', result.message);
@@ -32,27 +36,25 @@ const AdminDashboard = () => {
             }
 
             const profiles = result.data;
+            const plansList: any[] = plansJson?.success && Array.isArray(plansJson.data) ? plansJson.data : [];
+
+            // Build slug -> dollar price map from DB (fallback to 0 for unknown slugs)
+            const priceBySlug: Record<string, number> = {};
+            plansList.forEach(pl => { priceBySlug[pl.slug] = (pl.price_cents || 0) / 100; });
+
             let revenue = 0;
             let subs = 0;
             let licenses = 0;
 
             profiles.forEach((p: any) => {
-                const plan = p.plan?.toLowerCase();
+                const plan = (p.plan || '').toString().trim().toLowerCase();
                 const status = p.status?.toLowerCase();
 
-                // Revenue Calculation
-                if (plan === 'rbt_pro' || plan === 'basic') {
-                    revenue += 19.99;
-                    subs++;
-                } else if (plan === 'analyst_pro' || plan === 'advanced') {
-                    revenue += 44.99;
-                    subs++;
-                } else if (plan === 'elite') {
-                    revenue += 69.99;
+                if (plan && plan !== 'no_plan' && priceBySlug[plan] !== undefined) {
+                    revenue += priceBySlug[plan];
                     subs++;
                 }
 
-                // License Calculation (Mock logic: 1 license per active user)
                 if (status === 'active') {
                     licenses++;
                 }

@@ -53,6 +53,12 @@ const MENU_ITEMS: MenuItem[] = [
         adminOnly: true
     },
     {
+        to: '/admin-membership',
+        icon: 'workspace_premium',
+        labelKey: 'plans_management',
+        adminOnly: true
+    },
+    {
         to: '/admin-logs',
         icon: 'terminal',
         labelKey: 'logs',
@@ -226,7 +232,7 @@ const Sidebar = ({ isOpen, setIsOpen }: SidebarProps) => {
                             key={item.to}
                             to={item.to}
                             icon={item.icon}
-                            label={item.labelKey === 'plans' ? 'Membership' : t(item.labelKey)}
+                            label={item.labelKey === 'plans' ? 'Membership' : item.labelKey === 'plans_management' ? 'Plans' : t(item.labelKey)}
                             isCollapsed={isCollapsed}
                             isActive={pathname === item.to}
                             locked={item.locked}

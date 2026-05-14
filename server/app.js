@@ -22,6 +22,7 @@ import aiRoutes from './modules/ai/ai.routes.js';
 import notesRoutes from './modules/notes/notes.routes.js';
 import clientsRoutes from './modules/clients/clients.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
+import { plansRouter, plansAdminRouter } from './modules/plans/plans.routes.js';
 
 const JWT_SECRET = config.jwtSecret;
 if (!JWT_SECRET) {
@@ -88,9 +89,15 @@ if (config.nodeEnv !== 'production') {
 app.use('/api', globalLimiter);
 
 // ─── Module Routes ───────────────────────────────────────────────────
+// NOTE: plansRouter MUST be mounted before notesRoutes (which uses /api as a
+// catch-all and applies authenticate at router-level — that would intercept
+// unauthenticated requests to /api/plans). Same for plansAdminRouter vs
+// adminRoutes (/api/admin runs admin-auth on every sub-path).
 app.use('/api/auth', authRoutes);
 app.use('/api/stripe', billingRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/plans', plansRouter);
+app.use('/api/admin/plans', plansAdminRouter);
 app.use('/api', notesRoutes);          // Mounts /api/notes, /api/presets, /api/history
 app.use('/api/clients', clientsRoutes);
 app.use('/api/admin', adminRoutes);

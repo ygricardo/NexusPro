@@ -2,37 +2,20 @@ import Stripe from 'stripe';
 import { config } from '../../shared/config/index.js';
 import { supabaseAdmin } from '../../shared/lib/supabase.js';
 import logger from '../../shared/lib/logger.js';
+import { getPlanBySlug } from '../plans/plans.controller.js';
 
 const stripe = new Stripe(config.stripe.secretKey);
 
-const PLAN_PRICES = {
-    'basic': 1999, // $19.99
-    'advanced': 4999,     // $49.99
-    'elite': 6999    // $69.99
+// All plan data (price, name, modules) lives in the public.plans table.
+// These helpers wrap the DB lookup so callers don't need to know about Supabase.
+const fetchPlanForCheckout = async (slug) => {
+    const plan = await getPlanBySlug(slug);
+    if (!plan) return { plan: null, error: 'Invalid plan ID' };
+    if (!plan.is_active) return { plan: null, error: 'Plan is not available for purchase' };
+    return { plan };
 };
 
-const PLAN_NAMES = {
-    'basic': 'Basic Plan',
-    'advanced': 'Advanced Plan',
-    'elite': 'Elite Plan'
-};
-
-const getPlanModules = (planId) => {
-    const modules = new Set();
-    const plan = planId?.toLowerCase();
-
-    if (plan === 'basic') {
-        modules.add('rbt_generator');
-    } else if (plan === 'advanced') {
-        modules.add('rbt_generator');
-        modules.add('bcba_generator');
-    } else if (plan === 'elite') {
-        modules.add('rbt_generator');
-        modules.add('bcba_generator');
-        modules.add('note_generator');
-    }
-    return Array.from(modules);
-};
+const getPlanModules = (plan) => Array.isArray(plan?.modules) ? plan.modules : [];
 
 export const createCheckoutSession = async (req, res) => {
     try {
@@ -48,11 +31,12 @@ export const createCheckoutSession = async (req, res) => {
 
         const interval = intervalMap[clientInterval] || 'month';
 
-        if (!PLAN_PRICES[planId]) {
-            return res.status(400).json({ error: 'Invalid plan ID' });
+        const { plan, error: planErr } = await fetchPlanForCheckout(planId);
+        if (planErr) {
+            return res.status(400).json({ error: planErr });
         }
 
-        let unitAmount = PLAN_PRICES[planId];
+        let unitAmount = plan.price_cents;
 
         if (interval === 'year') {
             unitAmount = Math.round(unitAmount * 12 * 0.8);
@@ -63,16 +47,16 @@ export const createCheckoutSession = async (req, res) => {
             customer_email: user.email,
             client_reference_id: user.id,
             metadata: {
-                planId,
+                planId: plan.slug,
                 userId: user.id
             },
             line_items: [
                 {
                     price_data: {
-                        currency: 'usd',
+                        currency: plan.currency || 'usd',
                         product_data: {
-                            name: PLAN_NAMES[planId],
-                            description: `NexusPro ${PLAN_NAMES[planId]} (${interval})`,
+                            name: plan.name,
+                            description: `NexusPro ${plan.name} (${interval})`,
                         },
                         unit_amount: unitAmount,
                         recurring: {
@@ -87,7 +71,7 @@ export const createCheckoutSession = async (req, res) => {
             cancel_url: `${process.env.FRONTEND_URL || req.headers.origin}/#/plans`,
         });
 
-        logger.info(`[Stripe] Checkout session created`, { planId, interval, userId: user.id, sessionId: session.id });
+        logger.info(`[Stripe] Checkout session created`, { planId: plan.slug, interval, userId: user.id, sessionId: session.id });
         res.json({ url: session.url });
     } catch (error) {
         logger.error('[Stripe] Checkout Error', { error: error.message, userId: req.user?.id });
@@ -121,7 +105,8 @@ export const handleWebhook = async (req, res) => {
 
             if (userId && planId) {
                 if (supabaseAdmin) {
-                    const modules = getPlanModules(planId);
+                    const planRecord = await getPlanBySlug(planId);
+                    const modules = getPlanModules(planRecord);
                     const { error } = await supabaseAdmin
                         .from('profiles')
                         .update({
@@ -318,7 +303,8 @@ export const verifySession = async (req, res) => {
             logger.info('[Stripe] Session verified as paid', { sessionId, planId, userId: user.id });
 
             if (supabaseAdmin && planId) {
-                const modules = getPlanModules(planId);
+                const planRecord = await getPlanBySlug(planId);
+                const modules = getPlanModules(planRecord);
                 const { error } = await supabaseAdmin
                     .from('profiles')
                     .update({
@@ -457,8 +443,9 @@ export const updateSubscription = async (req, res) => {
         const user = req.user;
         const { planId } = req.body;
 
-        if (!PLAN_PRICES[planId]) {
-            return res.status(400).json({ error: 'Invalid plan ID' });
+        const { plan, error: planErr } = await fetchPlanForCheckout(planId);
+        if (planErr) {
+            return res.status(400).json({ error: planErr });
         }
 
         const customers = await stripe.customers.list({ email: user.email, limit: 1 });
@@ -480,11 +467,11 @@ export const updateSubscription = async (req, res) => {
         const subscriptionItemId = subscription.items.data[0].id;
 
         const price = await stripe.prices.create({
-            unit_amount: PLAN_PRICES[planId],
-            currency: 'usd',
-            recurring: { interval: 'month' },
+            unit_amount: plan.price_cents,
+            currency: plan.currency || 'usd',
+            recurring: { interval: plan.interval || 'month' },
             product_data: {
-                name: PLAN_NAMES[planId]
+                name: plan.name
             }
         });
 
@@ -496,7 +483,7 @@ export const updateSubscription = async (req, res) => {
             proration_behavior: 'always_invoice',
             expand: ['latest_invoice.payment_intent'],
             metadata: {
-                planId: planId
+                planId: plan.slug
             }
         });
 
@@ -508,11 +495,11 @@ export const updateSubscription = async (req, res) => {
         }
 
         if (supabaseAdmin) {
-            const modules = getPlanModules(planId);
+            const modules = getPlanModules(plan);
             await supabaseAdmin
                 .from('profiles')
                 .update({
-                    plan: planId,
+                    plan: plan.slug,
                     access: modules,
                     updated_at: new Date().toISOString()
                 })

@@ -45,32 +45,29 @@ const Plans = () => {
     }, [user]);
 
     const fetchPlans = async () => {
-        // Mock Plans Data
-        const mockPlans = [
-            {
-                id: 'basic',
-                name: 'Basic',
-                price: 19.99,
-                features: ['Client Caseload Management (Add/Delete)', 'Daily Data Generator Access'],
-                color: 'neutral'
-            },
-            {
-                id: 'advanced',
-                name: 'Advanced',
-                price: 49.99,
-                features: ['All Basic Features', 'Weekly Data Generator Access'],
-                color: 'primary'
-            },
-            {
-                id: 'elite',
-                name: 'Elite',
-                price: 69.99,
-                features: ['All Advanced Features', 'Note Generator Access'],
-                color: 'secondary'
+        try {
+            const res = await authApi.getActivePlans();
+            if (!res.ok) {
+                throw new Error(`Failed to load plans (status ${res.status})`);
             }
-        ];
-        setPlans(mockPlans);
-        setLoading(false);
+            const json = await res.json();
+            const list = Array.isArray(json?.data) ? json.data : [];
+            // Normalize for UI: keep slug as `id` so existing button/badge logic works.
+            const normalized = list.map((p: any) => ({
+                id: p.slug,
+                name: p.name,
+                price: (p.price_cents || 0) / 100,
+                features: Array.isArray(p.features) ? p.features : [],
+                color: p.color || 'primary',
+            }));
+            setPlans(normalized);
+        } catch (err) {
+            console.error('[Plans] Failed to fetch plans:', err);
+            toastError('Failed to load membership plans.');
+            setPlans([]);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const fetchSubscriptionDetails = async () => {

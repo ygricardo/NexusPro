@@ -5,7 +5,26 @@ export interface NavItem {
 }
 
 export type UserRole = 'admin' | 'user';
-export type UserPlan = 'basic' | 'advanced' | 'elite' | 'no_plan';
+// Plan slugs are dynamic (managed in the public.plans table by admins).
+// 'no_plan' is the sentinel for users without an active subscription.
+export type UserPlan = string;
+
+export interface Plan {
+    id: string;
+    slug: string;
+    name: string;
+    description?: string | null;
+    price_cents: number;
+    currency: string;
+    interval: 'month' | 'year';
+    features: string[];
+    modules: string[];
+    color?: string | null;
+    is_active: boolean;
+    display_order: number;
+    created_at?: string;
+    updated_at?: string;
+}
 
 /// <reference types="vite/client" />
 

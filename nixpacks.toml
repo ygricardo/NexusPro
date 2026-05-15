@@ -3,7 +3,9 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm install"]
+# --include=dev forces installation of devDependencies (vite, tailwind, etc.)
+# even when Nixpacks sets NODE_ENV=production during the build.
+cmds = ["npm install --include=dev"]
 
 [phases.build]
 cmds = ["npm run build"]
